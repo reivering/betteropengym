@@ -1226,10 +1226,11 @@ body.chips-dragging *{cursor:inherit}
 .swpane{position:absolute;top:0;bottom:0;width:0;overflow:hidden;z-index:0}
 .swpane.del{inset-inline-end:0;background:linear-gradient(rgba(255,69,58,0.22),rgba(255,69,58,0.22)),var(--surface);background:color-mix(in srgb,var(--red) 22%,var(--surface))}
 .swpane.cp{inset-inline-start:0;background:var(--acc-soft)}
-.swpane button{position:absolute;top:0;bottom:0;width:76px;padding:0;color:#fff;transition:width .16s var(--ease)}
-.swpane.del button{inset-inline-end:0;background:var(--red)}
-.swpane.cp button{inset-inline-start:0;background:var(--acc);color:var(--on-acc)}
-.swpane.armed button{width:100%}
+.swpane button{position:absolute;top:0;bottom:0;width:100%;padding:0;color:#fff;transition:background .16s var(--ease)}
+.swpane.del button{inset-inline-end:0;background:color-mix(in srgb,var(--red) 22%,var(--surface))}
+.swpane.cp button{inset-inline-start:0;background:var(--acc-soft);color:var(--label)}
+.swpane.del.armed button{background:var(--red)}
+.swpane.cp.armed button{background:var(--acc);color:var(--on-acc)}
 .swpane .lab{position:absolute;top:0;bottom:0;width:76px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px}
 .swpane.del .lab{inset-inline-start:0}
 .swpane.cp .lab{inset-inline-end:0}
@@ -1240,7 +1241,7 @@ body.chips-dragging *{cursor:inherit}
 /* The last set cannot go: the delete side shows grey and never fills. */
 .swpane.del.dis{background:var(--surface-2)}
 .swpane.del.dis button{background:var(--surface-3);color:var(--label-3)}
-.swpane.del.dis.armed button{width:76px}
+.swpane.del.dis.armed button{background:var(--surface-3)}
 .swrow.flash .swfront{animation:swflash .4s ease}
 @keyframes swflash{0%,35%{background:linear-gradient(var(--acc-line),var(--acc-line)),var(--surface);background:color-mix(in srgb,var(--acc) 28%,var(--surface))}100%{background:var(--surface)}}
 .swrow.flash-red .swfront{animation:swflashr .5s ease}
@@ -2055,7 +2056,50 @@ button.wl-summary{width:100%;padding:0 0 10px;text-align:start;border-radius:var
 .today-row{
   display:flex;align-items:center;justify-content:space-between;gap:10px;
   margin-top:12px;padding:12px 14px;border-radius:var(--r);background:var(--surface-2);
-  transition:background var(--fast);width:100%;text-align: start;cursor:pointer;
+  transition:background var(--fast),transform var(--fast) var(--ease);width:100%;text-align: start;cursor:pointer;
+}
+.home-agenda{min-width:0}
+.home-side{min-width:0}
+.home-week-nav .muted{font-size:13px;font-weight:600!important;letter-spacing:-.01em}
+.home-agenda-card,.home-side>.card,.home-checkin{
+  border:1px solid color-mix(in srgb,var(--label) 4%,transparent);
+}
+.home-agenda-card{padding:16px}
+.home-checkin{transition:transform var(--fast) var(--ease)}
+.home-agenda-card .week{gap:5px}
+.home-agenda-card .wday{min-height:66px;padding-block:9px;transition:background var(--fast),transform var(--fast) var(--ease)}
+.home-agenda-card .today-row{min-height:68px;margin-top:14px}
+.health-summary-row{border-radius:var(--r-sm);transition:background var(--fast),transform var(--fast) var(--ease)}
+.health-summary-value small{font-size:11px}
+.home-welcome .btn.primary{min-height:50px}
+.home-side>.card:last-child{margin-bottom:0}
+
+@media (hover:hover){
+  .btn:not(:disabled):hover{transform:translateY(-2px);filter:brightness(1.06)}
+  .iconbtn:hover{background:var(--surface-2);transform:translateY(-1px)}
+  .health-summary-row:hover{background:color-mix(in srgb,var(--surface-2) 72%,transparent)}
+  .today-row:hover{transform:translateY(-1px)}
+  .home-checkin:hover{transform:translateY(-1px)}
+  .home-agenda-card .wday:hover{background:var(--surface-2);transform:translateY(-1px)}
+  #tabbar button:not(.on):hover{color:var(--label-2)}
+}
+
+@media (min-width:1000px){
+  #app .home-layout{
+    width:min(100%,1040px);max-width:1040px;margin:0 auto;
+    display:grid;grid-template-columns:minmax(0,1.08fr) minmax(320px,.92fr);
+    column-gap:24px;align-items:start;
+  }
+  #app .home-layout>.hdr{grid-column:1/-1;margin:8px 0 24px;align-items:center}
+  #app .home-layout>.hdr h1{font-size:42px;letter-spacing:-.04em}
+  #app .home-layout>.health-summary{grid-column:2;grid-row:2;margin:0 0 14px}
+  #app .home-layout>.home-agenda{grid-column:1;grid-row:2 / span 2}
+  #app .home-layout>.home-side{grid-column:2;grid-row:3}
+  .home-agenda>.card,.home-side>.card{margin-bottom:14px}
+  .home-agenda-card{padding:20px}
+  .home-agenda-card .wday{min-height:74px}
+  .home-agenda-card .today-row{min-height:76px;margin-top:18px}
+  .home-side>.card:last-child{margin-bottom:0}
 }
 .today-row:active{background:var(--surface-3)}
 .today-row .lbl2{font-size:11px;font-weight:500;letter-spacing:.03em;text-transform:uppercase;color:var(--label-3)}

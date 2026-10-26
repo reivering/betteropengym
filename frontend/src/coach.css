@@ -5,8 +5,8 @@
 .ob{display:flex;flex-direction:column;min-height:calc(100dvh - var(--sat) - 200px)}
 .ob-top{display:flex;align-items:center;justify-content:space-between;margin:2px 0 26px;min-height:36px}
 .ob-dots{display:flex;gap:6px;align-items:center}
-.ob-dot{width:6px;height:6px;border-radius:99px;background:var(--label-4);transition:all var(--med) var(--ease)}
-.ob-dot.on{background:var(--acc);width:18px}
+.ob-dot{width:6px;height:6px;border-radius:99px;background:var(--label-4);transform:scaleX(1);transition:transform var(--med) var(--ease),background var(--med)}
+.ob-dot.on{background:var(--acc);transform:scaleX(3)}
 .ob-dot.done{background:var(--acc);opacity:.55}
 .ob-skip{background:none;color:var(--label-2);font-size:15px;padding:6px 2px}
 .ob-body{flex:1;padding-bottom:150px}
@@ -235,7 +235,8 @@
 .ins-bar{display:grid;grid-template-columns:76px 1fr 28px;align-items:center;gap:8px;padding:4px 0}
 .ins-bar-l{font-size:12.5px;color:var(--label-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ins-bar-t{height:8px;border-radius:99px;background:var(--surface-3);overflow:hidden}
-.ins-bar-t i{display:block;height:100%;border-radius:99px;background:var(--acc);transition:width var(--med) var(--ease)}
+.ins-bar-t i{display:block;width:100%;height:100%;border-radius:99px;background:var(--acc);transform:scaleX(var(--bar-progress,0));transform-origin:left center;transition:transform var(--med) var(--ease)}
+:dir(rtl) .ins-bar-t i{transform-origin:right center}
 .ins-bar-v{font-size:12px;font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
 .ins-cmp{font-size:12.5px;color:var(--label-2);line-height:1.5;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;padding:0 2px}
 .pcard-notes div{display:flex;gap:8px;align-items:flex-start}

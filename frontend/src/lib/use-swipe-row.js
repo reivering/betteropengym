@@ -184,7 +184,10 @@ export function useSwipeRow({ canDelete = true, canCopy = true, canSwipe, onComm
     const del = delRef.current, cp = cpRef.current
     for (const [pane, width] of [[del, Math.max(0, -off)], [cp, Math.max(0, off)]]) {
       if (!pane) continue
-      pane.style.transition = tr ? `width ${tr}` : 'none'
+      // The pane is absolutely positioned behind the row. Its reveal follows the finger directly;
+      // only the foreground row animates when a gesture settles, so snapping open/closed does not
+      // animate a layout dimension.
+      pane.style.transition = 'none'
       pane.style.width = width + 'px'
     }
     const armed = armedFor(off, w, copy)
