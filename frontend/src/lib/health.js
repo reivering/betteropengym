@@ -61,7 +61,7 @@ export function nutritionTotals(entries) {
 
 // Per-day source priority prevents overlapping whole-day totals from being added across
 // devices. Future providers should upload interval records and dedupe identical external IDs.
-const SOURCE_PRIORITY = { health_connect: 30, healthkit: 30, manual: 20, import: 10 }
+const SOURCE_PRIORITY = { health_connect: 30, healthkit: 30, browser_motion: 20, manual: 20, import: 10 }
 export function preferredRecords(records, metric, day) {
   const candidates = (records || []).filter(r => r.metric === metric && r.day === day)
   if (!candidates.length) return []
