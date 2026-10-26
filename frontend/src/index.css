@@ -2301,6 +2301,8 @@ button.wl-summary{width:100%;padding:0 0 10px;text-align:start;border-radius:var
 /* a weekday: short day name, the routine's glyph (a moon on a rest day), what is on it */
 .plan-day-n{min-width:30px;flex:none;white-space:nowrap;font-size:15px;font-weight:600;color:var(--label-2)}
 .plan-day-n.today{color:var(--acc)}
+/* Plan-day glyphs use the neutral accent tile too; white strokes disappear on that pale tile. */
+.plan-day .lrow-i:not(.rest){color:var(--on-acc)}
 /* Arabic names the whole day: one column wide enough for the longest keeps the glyphs aligned */
 [dir="rtl"] .plan-day-n{min-width:88px}
 .item .lrow-i.rest{background:var(--surface-3);color:var(--label-2)}
