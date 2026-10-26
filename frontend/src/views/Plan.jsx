@@ -135,6 +135,7 @@ export default function Plan() {
   const config = useStore(s => s.config)
   const coachMode = useStore(s => s.coachLocal?.mode)
   const user = useStore(s => s.user)
+  const toast = useUI(s => s.toast)
   const fileRef = useRef(null)
   const [view, setViewState] = useState(readView)
   const setView = v => {
@@ -147,10 +148,13 @@ export default function Plan() {
      Coach surface uses, so an instance without the feature sees exactly the header it would have
      without it. */
   const showCoach = coachAvailable(config, user, { demo: DEMO, mobile: MOBILE, coachMode })
-  const showCoachSetup = !showCoach && !!user?.admin && !MOBILE && !DEMO
-  const openCoach = () => showCoach
-    ? nav('/coach')
-    : nav('/admin', { state: { section: 'coach' } })
+  const openCoach = () => {
+    if (showCoach) nav('/coach')
+    else if (!user) nav('/settings/account')
+    else if (MOBILE) nav('/coach/setup')
+    else if (user.admin) nav('/admin', { state: { section: 'coach' } })
+    else toast(t('The AI Coach is not enabled on this server yet. Ask your admin to turn it on.'))
+  }
 
   // Share, print, import and starter plans: one menu behind the header button, so the
   // two views below are only about the plan itself.
@@ -176,7 +180,7 @@ export default function Plan() {
       <SeasonDeco spot="header-bats" />
       <div><h1>{t('Plan')}</h1><div className="sub">{mode === 'rotation' ? t('Your routines in a loop') : t('Your weekly routine')}</div></div>
       <div className="hdr-actions">
-        {(showCoach || showCoachSetup) && <Button size="sm" variant="tinted" icon="sparkles" onClick={openCoach}>{showCoach ? t('AI Coach') : t('Set up AI Coach')}</Button>}
+        <Button size="sm" variant="tinted" icon="sparkles" onClick={openCoach}>{t('AI Coach')}</Button>
         <button className="iconbtn" onClick={openMenu} aria-label={t('Plan options')} title={t('Plan options')}><Icon name="share" /></button>
       </div>
     </div>
