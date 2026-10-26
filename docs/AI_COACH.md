@@ -175,7 +175,7 @@ API_TARGET=coach docker compose up -d --build api
 
 `--build` matters. With a prebuilt `image:` also set, compose would otherwise pull the default.
 
-**2. Get a credential.** On a trusted machine where you already use Claude Code:
+**2. Sign in to the provider.** For Claude, on a trusted machine where you already use Claude Code:
 
 ```bash
 claude setup-token
@@ -189,12 +189,24 @@ Complete its normal browser sign-in and copy the token it prints. openGym never 
 that flow — it only ever receives the finished token. (Claude also accepts an Anthropic API key
 here, under the same chip; the setup token is the route for a Claude subscription.)
 
+For **Codex**, first build the `coach` image, then start device sign-in in the running API
+container:
+
+```bash
+docker compose exec -u root api sh -lc 'chown coach:coach /coach-auth && chmod 700 /coach-auth'
+docker compose exec -it --user coach api sh -lc 'CODEX_HOME=/coach-auth codex login --device-auth'
+```
+
+OpenAI prints a device code. Complete sign-in in a browser on any device; the homelab server does
+not need a desktop browser. The Codex CLI session is kept in `./coach-auth` and survives
+container restarts. It belongs to the account that completed the device sign-in.
+
 **3. Connect it.** In the app: **Settings → Account → Admin dashboard**, the **AI Coach** card.
 
 - Toggle the card on.
-- Pick the **Claude (Anthropic)** provider chip.
-- **Add CLI token** → paste the token, and optionally label whose account it is (that label is
-  what both the admin card and each user's Coach screen show when they name the account).
+- Pick **Claude (Anthropic)** or **Codex (OpenAI)**. Claude uses **Add CLI token** to paste the
+  token and optionally label whose account it is. Codex uses the server-side device sign-in above;
+  return to the card and press **Refresh sign-in status**.
 - **Test the Coach** — a real round trip through the provider with no user data anywhere near it.
   It reports the runtime version on success, and the provider's own error on failure.
 

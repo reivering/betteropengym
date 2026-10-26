@@ -235,10 +235,10 @@ Worth checking on a real device after changes here: turning it on shows Health C
 permission screen; a finished workout appears in Health Connect within a few seconds; deleting it
 in openGym removes it there; turning it off with "remove" leaves no openGym record behind.
 
-#### Reading back: heart rate and weigh-ins (v1.4.3, #544, #127)
+#### Reading back: heart rate, weigh-ins and daily steps (v1.4.3+, #544, #127)
 
-Two more switches in the same card (Android: Health Connect, iPhone: Apple Health), each off by
-default, each independent of writing and of the other:
+Three optional switches in the same card (Android: Health Connect, iPhone: Apple Health), each off
+by default and independent of writing and the other reads:
 
 - **Heart rate from your watch.** For each workout finished in the last 24 hours, the heart-rate
   samples between its start and end (+5 min) are read: `HC.readHeartRate({ from, to })` →
@@ -260,11 +260,18 @@ default, each independent of writing and of the other:
   entries carry `src` and are never written back (`healthRecords` leaves them out), and in a sync
   merge a typed weigh-in beats an imported one of the same day whichever is newer
   (`mergeBodyweight`); typing over an imported one makes it a typed one.
+- **Daily step totals.** `HC.readSteps({ from, to })` returns one total per local calendar day.
+  Health Connect's aggregate API deduplicates overlapping apps according to the user's source
+  priorities; Apple Health returns its daily cumulative total. These rows join the existing Activity
+  history as a higher-priority `health_connect` / `healthkit` source, so a manual total remains as
+  a fallback and is never added on top of the device total. The first read covers 30 days; later
+  foreground reads refresh a short overlap so late watch syncs and corrected totals are picked up.
 - **Foreground only.** Reads run at launch, on resume and after saves, never in the background.
   No `READ_HEALTH_DATA_IN_BACKGROUND`, no `READ_HEALTH_DATA_HISTORY`; old workouts are not filled in.
-- **Device-local state** in `opengym-health.json`: `readHr`, `readWeight`, `wCursor`, `seen` (what
+- **Device-local state** in `opengym-health.json`: `readHr`, `readWeight`, `readSteps`, `wCursor`, `seen` (what
   was imported per day), `hrTried` (when each recent workout was last read), `readError`.
-- **iPhone:** `AppleHealthPlugin.swift` `readHeartRate` / `readWeights` through `HKSampleQuery`;
+- **iPhone:** `AppleHealthPlugin.swift` `readHeartRate` / `readWeights` through `HKSampleQuery`, and
+  `readSteps` through a daily `HKStatisticsCollectionQuery`;
   the plain-value conversion is `WatchCore/Sources/WatchCore/HealthReadCore.swift` (compiled into
   the app, tested by `swift test`). Apple Health never says whether reading was allowed, so a
   refusal reads nothing. The usage string (`NSHealthShareUsageDescription`) says what is read.
@@ -446,12 +453,11 @@ it after every web-code change before building natively.
 
 ## App icons & splash screens
 
-`frontend/resources/icon.svg` is the 1024×1024 source (the app's dumbbell glyph on the
-app background). Generate all platform assets from it on a machine with the tooling:
+`frontend/resources/icon.svg` is the 1024×1024 FORM. icon source. Generate all platform assets from it on a machine with the tooling:
 
 ```sh
 cd frontend
-npx @capacitor/assets@3.0.5 generate --iconBackgroundColor '#0c0e12' --splashBackgroundColor '#0c0e12'
+npx @capacitor/assets@3.0.5 generate --iconBackgroundColor '#0b1224' --splashBackgroundColor '#0b1224'
 ```
 
 The generator is not a dependency of the app (it pulls in an old Capacitor CLI and sharp),

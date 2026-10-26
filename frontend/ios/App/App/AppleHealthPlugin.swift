@@ -17,10 +17,8 @@ import UIKit
  * afterwards, so lib/health-sync.js keeps them and tries again rather than forgetting them.
  *
  * Reading back (v1.4.3), each behind its own switch in Settings: the heart rate during a finished
- * workout (readHeartRate, for any watch that saves to Apple Health, Garmin and Polar included) and
- * weigh-ins other apps saved (readWeights). Foreground only, through HKSampleQuery; what to take is
- * decided in JS (lib/health-read.js). Apple Health never says whether reading was allowed, so a
- * refusal simply reads nothing.
+ * workout (readHeartRate), weigh-ins other apps saved (readWeights), and daily steps (readSteps).
+ * Foreground only; Apple Health never says whether reading was allowed, so a refusal reads nothing.
  */
 @objc(AppleHealthPlugin)
 public class AppleHealthPlugin: CAPPlugin, CAPBridgedPlugin {
@@ -35,6 +33,7 @@ public class AppleHealthPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "setEnabled", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "readHeartRate", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "readWeights", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "readSteps", returnType: CAPPluginReturnPromise),
     ]
 
     static let enabledKey = "healthEnabled"
@@ -45,6 +44,7 @@ public class AppleHealthPlugin: CAPPlugin, CAPBridgedPlugin {
     private var readTypes: Set<HKObjectType> {
         var types: Set<HKObjectType> = [HKObjectType.workoutType(), bodyMass]
         if let hr = HKObjectType.quantityType(forIdentifier: .heartRate) { types.insert(hr) }
+        if let steps = HKObjectType.quantityType(forIdentifier: .stepCount) { types.insert(steps) }
         return types
     }
 
@@ -67,6 +67,7 @@ public class AppleHealthPlugin: CAPPlugin, CAPBridgedPlugin {
             var types: Set<HKObjectType> = []
             if read.contains("heartRate"), let hr = HKObjectType.quantityType(forIdentifier: .heartRate) { types.insert(hr) }
             if read.contains("weight") { types.insert(bodyMass) }
+            if read.contains("steps"), let steps = HKObjectType.quantityType(forIdentifier: .stepCount) { types.insert(steps) }
             store.requestAuthorization(toShare: [], read: types) { _, _ in call.resolve(["granted": self.granted]) }
             return
         }
@@ -148,6 +149,39 @@ public class AppleHealthPlugin: CAPPlugin, CAPBridgedPlugin {
             }
             call.resolve(["records": HealthReadCore.weights(all)])
         } failed: { self.fail(call, $0) }
+    }
+
+    @objc func readSteps(_ call: CAPPluginCall) {
+        guard let fromMs = call.getDouble("from"), let toMs = call.getDouble("to"), toMs > fromMs,
+              let type = HKObjectType.quantityType(forIdentifier: .stepCount) else {
+            call.reject("from and to are needed", "failed")
+            return
+        }
+        let from = Date(timeIntervalSince1970: fromMs / 1000)
+        let to = Date(timeIntervalSince1970: toMs / 1000)
+        let calendar = Calendar.current
+        let anchor = calendar.startOfDay(for: from)
+        let predicate = HKQuery.predicateForSamples(withStart: from, end: to, options: .strictStartDate)
+        let query = HKStatisticsCollectionQuery(quantityType: type, quantitySamplePredicate: predicate,
+                                                options: .cumulativeSum, anchorDate: anchor,
+                                                intervalComponents: DateComponents(day: 1))
+        query.initialResultsHandler = { _, collection, error in
+            if let error = error, (error as? HKError)?.code != .errorAuthorizationDenied {
+                self.fail(call, error)
+                return
+            }
+            let formatter = DateFormatter()
+            formatter.calendar = calendar
+            formatter.timeZone = calendar.timeZone
+            formatter.dateFormat = "yyyy-MM-dd"
+            var records: [[String: Any]] = []
+            collection?.enumerateStatistics(from: anchor, to: to) { stat, _ in
+                guard let count = stat.sumQuantity()?.doubleValue(for: .count()), count > 0 else { return }
+                records.append(["day": formatter.string(from: stat.startDate), "steps": Int64(count.rounded())])
+            }
+            call.resolve(["records": records])
+        }
+        store.execute(query)
     }
 
     /// Every sample of `type` matching `predicate`, oldest first.

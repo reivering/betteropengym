@@ -2170,9 +2170,9 @@ function ActiveWorkout() {
         so a growing number cannot reflow the header the way a third item in the line above did
         on a 320 px phone. */}
     {weighable
-      ? <div className="wprog-row"><div className="wprog"><i style={{ width: (total ? done / total * 100 : 0) + '%' }} /></div>
+      ? <div className="wprog-row"><div className="wprog"><i style={{ '--progress': total ? done / total : 0 }} /></div>
         <span className="wvol" data-session-volume>{fmtVol(vol, S.unit)}</span></div>
-      : <div className="wprog"><i style={{ width: (total ? done / total * 100 : 0) + '%' }} /></div>}
+      : <div className="wprog"><i style={{ '--progress': total ? done / total : 0 }} /></div>}
     {/* In the list the chips ride in the pinned header, so any exercise is one tap away from
         anywhere in a long stack. */}
     {listMode && chipRow}

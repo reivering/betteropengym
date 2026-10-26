@@ -55,6 +55,24 @@ describe('mergeStates', () => {
     gymCards: [{ id: 'g2', value: '2' }], _rev: 8
   })
 
+  it('unions FORM health records and honours health-record deletion tombstones', () => {
+    const meal = (id, day) => ({ id, day, nutrients: { calories: 120 } })
+    const record = id => ({ id, day: '2026-09-01', metric: 'steps', value: 5000, _ts: 1 })
+    const left = base({ _ts: 100, nutrition: { foods: [{ id: 'oats' }], meals: [meal('breakfast', '2026-09-01')], goals: { calories: 1800 } }, activity: { stepGoal: 7000, records: [record('phone')] } })
+    const right = base({ _ts: 200, nutrition: { goals: { calories: 2100 }, foods: [{ id: 'eggs' }], meals: [meal('lunch', '2026-09-01')] }, activity: { stepGoal: 7200, records: [record('watch')] } })
+    const merged = mergeStates(left, right)
+    expect(ids(merged.nutrition.foods).sort()).toEqual(['eggs', 'oats'])
+    expect(ids(merged.nutrition.meals).sort()).toEqual(['breakfast', 'lunch'])
+    expect(ids(merged.activity.records).sort()).toEqual(['phone', 'watch'])
+    expect(merged.nutrition.goals.calories).toBe(2100)
+    expect(merged.activity.stepGoal).toBe(7200)
+
+    const removed = clone(left)
+    removed.nutrition.meals = []
+    stampDeletions(left, removed, 50)
+    expect(mergeStates(removed, left).nutrition.meals).toEqual([])
+  })
+
   it('no entity of either side disappears, ids stay unique', () => {
     const m = mergeStates(A(), B())
     expect(ids(m.workouts).sort()).toEqual(['w1', 'wA', 'wB'])

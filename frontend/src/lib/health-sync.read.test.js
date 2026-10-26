@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // object and an `apply` that runs the change on it (as useStore's update does).
 const h = vi.hoisted(() => {
   vi.stubEnv('VITE_MOBILE', '1')
-  return { files: new Map(), calls: [], platform: 'android', granted: { heartRate: true, weight: true }, hr: [], weights: [], fail: null }
+  return { files: new Map(), calls: [], platform: 'android', granted: { heartRate: true, weight: true, steps: true }, hr: [], weights: [], steps: [], fail: null }
 })
 
 vi.mock('@capacitor/filesystem', () => ({
@@ -38,6 +38,11 @@ vi.mock('@capacitor/core', () => ({
       if (h.fail) throw Object.assign(new Error('no'), { code: h.fail })
       return { records: h.weights.filter(r => r.t >= arg.since) }
     },
+    readSteps: async arg => {
+      h.calls.push(['readSteps', arg])
+      if (h.fail) throw Object.assign(new Error('no'), { code: h.fail })
+      return { records: h.steps.filter(r => r.t >= arg.from && r.t <= arg.to) }
+    },
     write: async () => { h.calls.push(['write']) },
     remove: async () => {},
     openSettings: async () => {},
@@ -59,7 +64,7 @@ beforeEach(async () => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(NOW)
   vi.resetModules()
-  h.files.clear(); h.calls = []; h.platform = 'android'; h.granted = { heartRate: true, weight: true }; h.hr = []; h.weights = []; h.fail = null
+  h.files.clear(); h.calls = []; h.platform = 'android'; h.granted = { heartRate: true, weight: true, steps: true }; h.hr = []; h.weights = []; h.steps = []; h.fail = null
   S = { unit: 'kg', workouts: [workout('w1')], bodyweight: [] }
   applied = 0
   hs = await import('./health-sync.js')
@@ -139,6 +144,34 @@ describe('heart rate', () => {
     await hs.readHealth(getState, { force: true, now: NOW + 3 * 60e3, apply })
     expect(reads('readHeartRate')).toHaveLength(1)
     expect(S.workouts[0].hr.src).toBe('hc')
+  })
+})
+
+describe('daily steps', () => {
+  it('asks for steps only and imports daily totals into the activity history', async () => {
+    h.steps = [
+      { day: '2026-10-14', steps: 6420, t: s(0) },
+      { day: '2026-10-15', steps: 8123, t: NOW },
+    ]
+    const result = await hs.enableRead('steps', getState, { apply })
+    expect(result.ok).toBe(true)
+    expect(h.calls[0]).toEqual(['request', { read: ['steps'], write: [] }])
+    expect(reads('readSteps')[0][1].from).toBe(NOW - 30 * 24 * 3600e3)
+    expect(S.activity.records.map(r => [r.day, r.value, r.provider])).toEqual([
+      ['2026-10-14', 6420, 'health_connect'],
+      ['2026-10-15', 8123, 'health_connect'],
+    ])
+    expect(file()).toMatchObject({ readSteps: true, readHr: false, readWeight: false })
+  })
+
+  it('replaces a corrected day total without adding it to the prior imported count', async () => {
+    h.steps = [{ day: '2026-10-15', steps: 7000, t: NOW }]
+    await hs.enableRead('steps', getState, { apply })
+    h.steps = [{ day: '2026-10-15', steps: 7400, t: NOW }]
+    await hs.readHealth(getState, { now: NOW + 11 * 60e3, apply })
+    const imported = S.activity.records.filter(r => r.provider === 'health_connect' && r.day === '2026-10-15')
+    expect(imported).toHaveLength(1)
+    expect(imported[0].value).toBe(7400)
   })
 })
 

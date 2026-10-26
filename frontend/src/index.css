@@ -19,32 +19,32 @@
 /* ---------------------------------------------------------------- tokens -- */
 :root {
   /* surfaces — dark is the default */
-  --bg:        #000000;
-  --bg-el:     #0e0e10;   /* elevated backdrop (sheets, bars) */
-  --surface:   #1c1c1e;   /* card / grouped-list fill */
-  --surface-2: #2c2c2e;   /* pressed + nested fill */
-  --surface-3: #3a3a3c;   /* controls (segmented track, switch off) */
+  --bg:        #0b1224;
+  --bg-el:     #111b30;   /* elevated backdrop (sheets, bars) */
+  --surface:   #17223a;   /* card / grouped-list fill */
+  --surface-2: #202f49;   /* pressed + nested fill */
+  --surface-3: #293955;   /* controls (segmented track, switch off) */
 
   /* text */
-  --label:     #ffffff;
-  --label-2:   rgba(235,235,245,.60);
-  --label-3:   rgba(235,235,245,.32);
-  --label-4:   rgba(235,235,245,.18);
+  --label:     #f3f6ff;
+  --label-2:   #a4b3d0;
+  --label-3:   rgba(164,179,208,.62);
+  --label-4:   rgba(164,179,208,.36);
 
   /* lines */
-  --sep:       rgba(84,84,88,.60);
-  --sep-op:    rgba(84,84,88,.34);   /* for edges sitting over blur */
+  --sep:       #293955;
+  --sep-op:    rgba(41,57,85,.72);   /* for edges sitting over blur */
   --hair:      .5px;
 
   /* system palette (iOS dark values) */
-  --blue:#0a84ff; --green:#30d158; --red:#ff453a; --orange:#ff9f0a;
+  --blue:#5287f7; --green:#54c89b; --red:#ef777d; --orange:#f0bb68;
   --yellow:#ffd60a; --teal:#40c8e0; --indigo:#5e5ce6; --pink:#ff375f;
   --purple:#bf5af2; --mint:#63e6e2; --brown:#ac8e68; --grey:#8e8e93;
 
   /* accent (per-account, synced) */
-  --acc:  var(--green);
-  --acc-2:#248a3d;
-  --on-acc:#000000;
+  --acc:  var(--blue);
+  --acc-2:#356bd0;
+  --on-acc:#ffffff;
   --acc-soft: color-mix(in srgb, var(--acc) 16%, transparent);
   --acc-line: color-mix(in srgb, var(--acc) 38%, transparent);
 
@@ -767,7 +767,7 @@ body.chips-dragging *{cursor:inherit}
 .sw .knob{
   width:27px;height:27px;border-radius:50%;background:#fff;
   box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);
-  transition:transform var(--med) var(--ease),width var(--fast) var(--ease);
+  transition:transform var(--med) var(--ease);
 }
 .sw.on{background:var(--acc)}
 /* On an accent nearly as light as the knob (an own white or pale yellow, the gold preset) the
@@ -775,8 +775,8 @@ body.chips-dragging *{cursor:inherit}
    for an own colour; it is transparent everywhere else. */
 .sw.on .knob{box-shadow:0 0 0 1px var(--knob-ring,transparent),0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16)}
 .sw.on .knob{transform:translateX(20px)}
-.sw:active .knob{width:31px}
-.sw.on:active .knob{transform:translateX(16px)}
+.sw:active .knob{transform:scale(1.14)}
+.sw.on:active .knob{transform:translateX(16px) scale(1.14)}
 .sw:disabled{opacity:.4}
 
 /* --- segmented control --- */
@@ -942,7 +942,7 @@ body.chips-dragging *{cursor:inherit}
 }
 .exhd{align-items:center}
 .wprog{height:4px;background:var(--surface-2);border-radius:99px;overflow:hidden;margin-bottom:16px}
-.wprog i{display:block;height:100%;background:var(--acc);border-radius:99px;transition:width var(--med) var(--ease)}
+.wprog i{display:block;width:100%;height:100%;background:var(--acc);border-radius:99px;transform:scaleX(var(--progress,0));transform-origin:left center;transition:transform var(--med) var(--ease)}
 /* The bar with the session's volume at its end (#774): 12 px tall where the bar is 4, so it takes
    8 px less margin and the header keeps the exact height it has without it. */
 .wprog-row{display:flex;align-items:center;gap:8px;height:12px;margin-bottom:8px}
@@ -2294,6 +2294,8 @@ button.wl-summary{width:100%;padding:0 0 10px;text-align:start;border-radius:var
 [dir="rtl"] [data-icon="chevronRight"]{transform:scaleX(-1)}
 /* Segmented control: flex order reverses, so the sliding indicator moves the other way. */
 [dir="rtl"] .seg-sel{transform:translateX(calc(-100% * var(--i)))}
+[dir="rtl"] .wprog i{transform-origin:right center}
+[dir="rtl"] .update-progress-fill{transform-origin:right center}
 /* Numbers and dates inside Arabic text still read left-to-right. */
 [dir="rtl"] .num,[dir="rtl"] input[type="number"]{direction:ltr}
 /* Superset edge stripe points at the inline start (the right, in RTL). */
@@ -2332,6 +2334,95 @@ button.wl-summary{width:100%;padding:0 0 10px;text-align:start;border-radius:var
 .gym-map .leaflet-control-attribution{font-size:10px}
 .gym-pin span{display:block;width:30px;height:30px;border-radius:50% 50% 50% 0;background:var(--acc);transform:rotate(-45deg);box-shadow:0 2px 6px rgba(0,0,0,.35);border:2px solid #fff}
 .gym-radius{stroke:var(--acc);fill:var(--acc);stroke-width:2}
+
+/* FORM. nutrition and everyday activity. Keep the source app's theme, spacing, and controls. */
+.health-page{max-width:620px;margin:0 auto;padding-bottom:calc(24px + var(--sab));}
+.health-header{align-items:center;margin-bottom:18px}
+.health-header h1{margin:2px 0 3px}
+.health-header .kicker{color:var(--acc);font-size:11px;font-weight:700;letter-spacing:.1em}
+.health-overview{background:var(--surface);border-radius:var(--r-card);padding:16px;margin-bottom:16px}
+.health-date-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:38px;color:var(--label-2);font-size:14px}
+.health-date-row .iconbtn:disabled{opacity:.32}
+.health-calories{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:18px 0 12px}
+.health-calories>div,.energy-pair>div{display:grid;gap:4px}
+.health-calories>div>b{font-size:36px;line-height:1.05;font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+.health-calories>div>b small{font-size:14px;font-weight:500;color:var(--label-2);letter-spacing:0}
+.health-remaining{text-align:end;color:var(--label-2);font-size:12px}
+.health-remaining>b{font-size:14px;color:var(--label);font-variant-numeric:tabular-nums}
+.health-progress,.health-summary-track{height:6px;border-radius:99px;background:var(--surface-3);overflow:hidden;display:block}
+.health-progress>i,.health-summary-track>i{display:block;width:100%;height:100%;border-radius:inherit;background:var(--acc);transform:scaleX(var(--health-progress,0));transform-origin:left center}
+.health-note{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:9px;color:var(--label-2);font-size:12px}
+.health-note b{color:var(--label);font-variant-numeric:tabular-nums}
+.macro-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 20px;margin-top:20px}
+.macro-meter>div:first-child{display:flex;justify-content:space-between;align-items:baseline;gap:6px;margin-bottom:7px;font-size:12px;color:var(--label-2)}
+.macro-meter b{color:var(--label);font-size:13px;font-variant-numeric:tabular-nums}
+.macro-meter b small{font-size:11px;font-weight:400;color:var(--label-3)}
+.macro-meter .health-progress{height:4px}
+.health-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:22px 2px 10px}
+.health-toolbar h2{font-size:17px;line-height:1.2;margin:0;font-weight:600}
+.health-toolbar .btn{flex:none}
+.meal-group{margin:14px 0 20px}
+.meal-category{display:flex;align-items:center;justify-content:space-between;padding:0 4px 7px;color:var(--label-2);font-size:13px;font-weight:600}
+.meal-category span{font-variant-numeric:tabular-nums;font-weight:500}
+.sect-b{background:var(--surface);border-radius:var(--r-card);overflow:hidden}
+.meal-row{display:flex;align-items:center;gap:12px;padding:12px 14px;min-width:0}
+.meal-row+.meal-row{border-top:var(--hair) solid var(--sep)}
+.meal-dot,.health-summary-icon,.empty-health .lrow-i{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:11px;background:var(--acc-soft);color:var(--acc)}
+.meal-info{display:grid;gap:3px;flex:1;min-width:0}
+.meal-info b{font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.meal-info small{font-size:12px;line-height:1.35;color:var(--label-2);font-variant-numeric:tabular-nums}
+.meal-remove{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:10px;color:var(--label-3)}
+.meal-remove:active{background:var(--surface-2);color:var(--red)}
+.empty-health{display:grid;justify-items:center;text-align:center;gap:8px;padding:28px 18px;background:var(--surface);border-radius:var(--r-card)}
+.empty-health .lrow-i{width:44px;height:44px}
+.empty-health h3,.empty-health p{margin:0}
+.empty-health h3{font-size:16px}
+.empty-health p,.health-footnote,.health-help{font-size:12px;line-height:1.5;color:var(--label-2)}
+.empty-health p{max-width:34ch;margin-bottom:7px}
+.health-footnote{padding:4px 6px 18px}
+.health-sheet{display:grid;gap:14px;padding:4px 2px 12px}
+.health-label{display:grid;gap:6px;min-width:0;color:var(--label-2);font-size:12px}
+.health-input{width:100%;min-height:42px;padding:9px 11px;border:1px solid var(--sep);border-radius:var(--r-sm);background:var(--bg-el);color:var(--label);font:inherit;font-size:15px}
+.health-input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.health-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.health-form-grid .span2{grid-column:1/-1}
+.food-options{display:grid;max-height:190px;overflow:auto;border-radius:var(--r-sm);background:var(--surface)}
+.food-option{display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:start;padding:10px 12px}
+.food-option+.food-option{border-top:var(--hair) solid var(--sep)}
+.food-option span{display:grid;gap:3px;min-width:0}
+.food-option b{font-size:14px}
+.food-option small{color:var(--label-2);font-size:12px}
+.food-option.selected{color:var(--acc)}
+.health-text-btn{display:flex;align-items:center;gap:7px;justify-self:start;color:var(--acc);font-size:14px;padding:4px 2px}
+.health-help{padding:10px 12px;background:var(--bg-el);border-radius:var(--r-sm)}
+.health-summary{margin:0 0 16px;padding:3px 14px}
+.health-summary-row{display:grid;grid-template-columns:36px minmax(72px,1fr) minmax(120px,1.25fr) 16px;align-items:center;gap:11px;width:100%;min-height:68px;text-align:start}
+.health-summary-row+.health-summary-row{border-top:var(--hair) solid var(--sep)}
+.health-summary-copy{display:grid;gap:3px;min-width:0}
+.health-summary-copy b{font-size:14px;font-weight:600}
+.health-summary-copy small{font-size:12px;color:var(--label-2)}
+.health-summary-value{display:grid;gap:5px;justify-items:end;text-align:end;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;min-width:0}
+.health-summary-value small{max-width:100%;font-size:10px;color:var(--label-2);font-weight:400;white-space:nowrap}
+.health-summary-track{width:100%;height:4px}
+.health-summary-row>.icn{font-size:16px;color:var(--label-3)}
+.update-progress-fill{display:block;width:100%;height:100%;border-radius:3px;background:var(--acc);transform:scaleX(var(--progress,0));transform-origin:left center;transition:transform .2s}
+.step-readout{display:flex;align-items:baseline;gap:8px;margin:16px 0 10px}
+.step-readout>div{display:grid;gap:2px}
+.step-readout b{font-size:40px;line-height:1.05;font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+.health-target{font-size:13px;color:var(--label-2)}
+.activity-overview>.btn{width:100%;margin-top:15px}
+.week-activity{padding-bottom:13px}
+.step-week-chart{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));align-items:end;gap:7px;height:140px;padding:5px 2px 0}
+.step-day{display:grid;grid-template-rows:16px 1fr 18px;align-items:end;justify-items:center;gap:5px;min-width:0;height:100%}
+.step-day>span{font-size:9px;color:var(--label-3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.step-bar{display:flex;align-items:end;justify-content:center;width:100%;height:100%;border-radius:5px;background:var(--bg-el);overflow:hidden}
+.step-bar i{display:block;width:min(70%,24px);min-height:2px;border-radius:5px 5px 2px 2px;background:var(--acc)}
+.step-day>small{font-size:10px;color:var(--label-2)}
+.energy-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}
+.energy-pair>div{padding:12px;border-radius:var(--r-sm);background:var(--bg-el)}
+.energy-pair span{font-size:12px;color:var(--label-2)}
+.energy-pair b{font-size:15px;font-variant-numeric:tabular-nums}
+@media(max-width:380px){.health-summary-row{grid-template-columns:32px minmax(55px,.8fr) minmax(115px,1.2fr) 12px;gap:8px}.health-summary-icon{width:32px;height:32px}.health-summary-value small{font-size:9px}.macro-grid{gap:12px}}
 .gym-search{display:flex;gap:8px;align-items:center;padding:8px 12px}
 .gym-search>.field{flex:1;min-width:0;width:auto}
 .gym-search>.btn{flex:none;width:auto;padding-left:16px;padding-right:16px}

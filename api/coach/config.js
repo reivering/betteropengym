@@ -42,6 +42,22 @@ const FILE = path.join(DATA, 'coach.json');
  * So the runtime gets its own mount, and the backup instructions stay true rather than being
  * quietly wrong about what they capture. */
 export const CREDENTIAL_HOME = process.env.COACH_CREDENTIAL_DIR || '/coach-auth';
+const CODEX_AUTH_FILE = path.join(CREDENTIAL_HOME, 'auth.json');
+
+// Codex ChatGPT sign-in belongs to the CLI, not the encrypted provider-key map. Read only the
+// file's shape and mtime: the tokens stay exclusively in /coach-auth and never enter API state.
+export function codexLoginStatus() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(CODEX_AUTH_FILE, 'utf8'));
+    const valid = raw && typeof raw === 'object' && (raw.tokens?.access_token || raw.OPENAI_API_KEY || raw.api_key);
+    return valid ? { connected: true, connectedAt: fs.statSync(CODEX_AUTH_FILE).mtime.toISOString() } : { connected: false, connectedAt: null };
+  } catch { return { connected: false, connectedAt: null }; }
+}
+
+export function clearCodexLogin() {
+  try { fs.unlinkSync(CODEX_AUTH_FILE); return true; }
+  catch (e) { return e.code === 'ENOENT'; }
+}
 export const COACH_DISABLED = /^(1|true|yes|on)$/i.test(process.env.COACH_DISABLED || '');
 
 // Providers this build can drive. `runtime` is what the adapter runs. Adding one is an adapter
@@ -63,7 +79,7 @@ export const PROVIDERS = {
   // somewhere is CREDENTIAL_HOME — outside ./data, so `tar czf … data/` cannot capture it.
   codex: {
     label: 'Codex (OpenAI)', runtime: 'Codex CLI',
-    apiKeyEnv: 'CODEX_API_KEY', oauthEnv: null, credentialHomeEnv: 'CODEX_HOME'
+    apiKeyEnv: 'CODEX_API_KEY', oauthEnv: null, credentialHomeEnv: 'CODEX_HOME', deviceLogin: true
   },
   // The plain-HTTPS providers — Anthropic, OpenAI, Gemini and any OpenAI-compatible endpoint.
   // Described once in core/providers.js so the phone's picker and this table cannot disagree.
@@ -258,6 +274,9 @@ export function credentialFor(uid) {
   const rec = authFor(cfg);
   const auth = rec && rec.data ? decrypt(rec.data) : null;
   if (!auth || !auth.token) {
+    if (cfg.provider === 'codex' && !rec && codexLoginStatus().connected) {
+      return { ok: true, auth: { token: 'codex-cli-cache' }, type: 'chatgpt-cli', account: null, mode: 'instance' };
+    }
     // An endpoint that takes no key (a model on the LAN) is connected without one. Only when
     // nothing was ever filed — a filed key that fails to decrypt is still a failure.
     if (providerMeta(cfg).keyOptional && !rec) return { ok: true, auth: null, type: null, account: null, mode: 'instance' };
@@ -273,14 +292,15 @@ export function credentialFor(uid) {
    the provider terms forbid. An API key is what an admin pastes so their household can use the
    Coach; binding it to whoever happened to click first would just look broken, and the daily
    caps are what bound its spend. */
-export const isPersonalCredential = type => type === 'cli-token' || type === 'oauth';
+export const isPersonalCredential = type => type === 'cli-token' || type === 'oauth' || type === 'chatgpt-cli';
 
 /** First profile to actually spend the instance credential binds it — a personal credential
  *  only; an API key is shared by every profile on the instance. */
 export function bindInstanceCredential(uid) {
   const cfg = load();
   const rec = authFor(cfg);
-  if (cfg.authMode === 'instance' && !boundUidFor(cfg) && cfg.provider !== 'fixture' && rec && isPersonalCredential(rec.type)) {
+  const cliSession = cfg.provider === 'codex' && !rec && codexLoginStatus().connected;
+  if (cfg.authMode === 'instance' && !boundUidFor(cfg) && cfg.provider !== 'fixture' && ((rec && isPersonalCredential(rec.type)) || cliSession)) {
     save({ boundUid: { ...cfg.boundUid, [cfg.provider]: uid } });
   }
 }
@@ -319,6 +339,7 @@ export function isConnected() {
   if (cfg.provider === 'fixture') return true;
   if (cfg.authMode === 'profile') return true;
   const rec = authFor(cfg);
+  if (cfg.provider === 'codex' && !rec && codexLoginStatus().connected) return true;
   if (!rec) return !!providerMeta(cfg).keyOptional && !!baseUrlFor(cfg.provider, cfg);
   return !!decrypt(rec.data);
 }

@@ -236,7 +236,9 @@ export default function AdminCoach() {
           <CredentialPill auth={d.auth} />
         </div>
         {authState === 'connected' ? <>
-          <div className="adm-hint">Connected{d.auth.account ? ' as ' + d.auth.account : ''} via {credentialLabel(d.auth.type)}{d.auth.connectedAt ? ' · added ' + rel(d.auth.connectedAt) : ''}. The key is stored encrypted and is never shown again.</div>
+          <div className="adm-hint">{d.auth.type === 'chatgpt-cli'
+            ? <>Signed in via the Codex CLI{d.auth.connectedAt ? ' · last refreshed ' + rel(d.auth.connectedAt) : ''}. Its login cache stays in <code>./coach-auth</code> on this server.</>
+            : <>Connected{d.auth.account ? ' as ' + d.auth.account : ''} via {credentialLabel(d.auth.type)}{d.auth.connectedAt ? ' · added ' + rel(d.auth.connectedAt) : ''}. The key is stored encrypted and is never shown again.</>}</div>
           <div className="adm-actions">
             {meta.apiKey && <Button size="sm" variant="tinted" icon="lock" disabled={busy}
               onClick={() => openSheet(close => <ApiKeySheet close={close} onDone={load} label={meta.label} placeholder={meta.keyPlaceholder} optional={meta.keyOptional} />)}>Replace key</Button>}
@@ -245,7 +247,9 @@ export default function AdminCoach() {
                 until 2026-09-22 this one did not. */}
             <Button size="sm" variant="danger" disabled={busy} onClick={() => confirmSheet({
               title: 'Remove this credential?',
-              message: 'The Coach stops working for everyone on this instance until a new key is added. The stored key cannot be recovered.',
+              message: d.auth.type === 'chatgpt-cli'
+                ? 'The Coach stops working for everyone on this instance and the Codex CLI login cache is removed. You can sign in again from the server.'
+                : 'The Coach stops working for everyone on this instance until a new key is added. The stored key cannot be recovered.',
               confirmText: 'Remove', danger: true, onConfirm: disconnect,
             })}>Remove</Button>
           </div>
@@ -254,9 +258,14 @@ export default function AdminCoach() {
             The stored credential can't be decrypted. This usually means <code>./data</code> was restored without its <code>secret</code> file. Add the key again to fix it.
           </div>}
           {authState === 'optional' && <div className="adm-hint">This endpoint works without a key. Add one only if your server asks for it (OpenRouter does; a model on your own network usually does not).</div>}
-          {authState === 'none' && <div className="adm-hint">{meta.setupToken
-            ? 'Paste either a Claude Code setup token (your subscription) or an Anthropic API key (pay per use).'
-            : 'Paste an API key from the provider\'s console. It is stored encrypted on this server and sent to the provider only while a job runs.'}</div>}
+          {authState === 'none' && <div className="adm-hint">{meta.deviceLogin
+            ? <>After building the <code>coach</code> image, run these on the server. The first command prepares the mounted sign-in folder; the second starts device sign-in:<br /><code>docker compose exec -u root api sh -lc 'chown coach:coach /coach-auth && chmod 700 /coach-auth'</code><br /><code>docker compose exec -it --user coach api sh -lc 'CODEX_HOME=/coach-auth codex login --device-auth'</code><br />Complete the device sign-in in a browser, then refresh this card. The session is kept in <code>./coach-auth</code>.</>
+            : meta.setupToken
+              ? 'Paste either a Claude Code setup token (your subscription) or an Anthropic API key (pay per use).'
+              : 'Paste an API key from the provider\'s console. It is stored encrypted on this server and sent to the provider only while a job runs.'}</div>}
+          {authState === 'none' && meta.deviceLogin && <div className="adm-actions">
+            <Button size="sm" variant="tinted" icon="repeat" disabled={busy} onClick={load}>Refresh sign-in status</Button>
+          </div>}
           <div className="adm-actions">
             {meta.setupToken && <Button size="sm" variant="primary" icon="key" disabled={busy}
               onClick={() => openSheet(close => <SetupTokenSheet close={close} onDone={load} label={meta.label} />)}>Add Claude Code token</Button>}

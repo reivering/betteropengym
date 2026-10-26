@@ -11,7 +11,7 @@
 // the Apple Watch app (its workout session shows the heart rate per set), and tells the watch
 // whether it is on (setEnabled: the App Group's "healthEnabled", which the watch link passes on).
 //
-// Since v1.4.3 it can also read two things back (#544, #127), each behind a switch of its own and
+// Since v1.4.3 it can also read health data back (#544, #127), each behind a switch of its own and
 // off by default: the heart rate during a finished workout (for any watch that saves to the hub,
 // not just the Apple Watch), and weigh-ins other apps saved there. Only while the app is open, only
 // the workouts of the last day and the weigh-ins since the last read (30 days the first time), so
@@ -26,7 +26,7 @@ import { EXIDX } from './exercises.js'
 import { speedUnitOf } from './speed.js'
 
 export const HEALTH_FILE = 'opengym-health.json'
-const OFF = { on: false, written: {}, at: 0, error: null, readHr: false, readWeight: false, wHistory: false, wCursor: 0, seen: {}, hrTried: {}, readError: null }
+const OFF = { on: false, written: {}, at: 0, error: null, readHr: false, readWeight: false, readSteps: false, wHistory: false, wCursor: 0, seen: {}, hrTried: {}, readError: null }
 
 // Wrapped in an object, as in rest-alert.js: a Capacitor plugin proxy answers `then`, so a
 // promise resolved with the bare proxy never settles.
@@ -251,7 +251,7 @@ export async function enableRead(kind, getState, { apply = null } = {}) {
   if (!p) return { ok: false, reason: 'unsupported' }
   const st = await p.HC.status().catch(() => ({ status: 'unsupported' }))
   if (st.status !== 'available') return { ok: false, reason: st.status }
-  const perm = kind === 'hr' ? 'heartRate' : 'weight'
+  const perm = kind === 'hr' ? 'heartRate' : kind === 'weight' ? 'weight' : 'steps'
   // The history permission only where Health Connect has it (status says so); Apple Health has none.
   const history = kind === 'weight' && p.platform !== 'ios' && st.history === true
   const res = await p.HC.requestPermissions({ read: history ? [perm, 'history'] : [perm], write: [] }).catch(() => null)
@@ -260,7 +260,7 @@ export async function enableRead(kind, getState, { apply = null } = {}) {
   const ok = res && (res.read ? res.read[perm] !== false : true)
   if (!ok) return { ok: false, reason: 'denied' }
   const h = await loadHealth()
-  const out = { ...h, [kind === 'hr' ? 'readHr' : 'readWeight']: true, readError: null }
+  const out = { ...h, [kind === 'hr' ? 'readHr' : kind === 'weight' ? 'readWeight' : 'readSteps']: true, readError: null }
   if (kind === 'weight') out.wHistory = history && res.read?.history === true
   await saveHealth(out)
   told(out)
@@ -272,8 +272,8 @@ export async function enableRead(kind, getState, { apply = null } = {}) {
 export async function disableRead(kind) {
   if (readRunning) await readRunning.catch(() => {})
   const h = await loadHealth()
-  const out = kind === 'hr' ? { ...h, readHr: false, hrTried: {} } : { ...h, readWeight: false }
-  if (!out.readHr && !out.readWeight) out.readError = null
+  const out = kind === 'hr' ? { ...h, readHr: false, hrTried: {} } : kind === 'weight' ? { ...h, readWeight: false } : { ...h, readSteps: false }
+  if (!out.readHr && !out.readWeight && !out.readSteps) out.readError = null
   await saveHealth(out)
   told(out)
   return out
@@ -286,7 +286,7 @@ export async function disableRead(kind) {
  * `force`). The log changes only when something new came in.
  */
 export function readHealth(getState, { force = false, now = Date.now(), apply = null } = {}) {
-  if (!MOBILE || !cached || !(cached.readHr || cached.readWeight)) return Promise.resolve(cached)
+  if (!MOBILE || !cached || !(cached.readHr || cached.readWeight || cached.readSteps)) return Promise.resolve(cached)
   if (readRunning) return readRunning
   readRunning = readOnce(getState, force, now, apply || applyRef).finally(() => { readRunning = null })
   return readRunning
@@ -350,6 +350,34 @@ async function readOnce(getState, force, now, applyFn) {
       h.seen = seen
       const newest = records.reduce((m, r) => Math.max(m, Number(r?.t) || 0), 0)
       if (newest > h.wCursor) h.wCursor = newest
+    } catch (e) { fail(e) }
+  }
+
+  if (h.readSteps && (force ? now - Number(h.stepsReadAt || 0) >= RESUME_EVERY_MS : now - Number(h.stepsReadAt || 0) >= READ_EVERY_MS)) {
+    const since = Number(h.stepsCursor || 0) > 0 ? Math.max(Number(h.stepsCursor) - 2 * 24 * 3600e3, now - WEIGHT_FIRST_MS) : now - WEIGHT_FIRST_MS
+    const stepsProvider = p.platform === 'ios' ? 'healthkit' : 'health_connect'
+    try {
+      const res = await p.HC.readSteps({ from: since, to: now })
+      const records = Array.isArray(res?.records) ? res.records : []
+      // Aggregate totals are one record per local calendar day. Replace that day's previous
+      // imported value so Health Connect/Apple Health corrections never inflate the count.
+      const byDay = new Map(records.filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r?.day)).map(r => [r.day, Math.max(0, Number(r.steps) || 0)]))
+      if (byDay.size) apply(probe => {
+        const old = probe.activity?.records || []
+        return [...byDay].some(([day, value]) => old.find(r => r.provider === stepsProvider && r.deviceId === 'daily-total' && r.metric === 'steps' && r.day === day)?.value !== value)
+      }, state => {
+        state.activity ||= { stepGoal: 8000, records: [] }
+        for (const [day, value] of byDay) {
+          state.activity.records = state.activity.records.filter(r => !(r.provider === stepsProvider && r.deviceId === 'daily-total' && r.metric === 'steps' && r.day === day))
+          if (value > 0) {
+            const start = new Date(`${day}T00:00:00`)
+            const end = new Date(start); end.setDate(end.getDate() + 1)
+            state.activity.records.push({ id: `steps:${stepsProvider}:${day}`, userId: null, provider: stepsProvider, deviceId: 'daily-total', startAt: start.toISOString(), endAt: new Date(end.getTime() - 1).toISOString(), day, metric: 'steps', value, unit: 'count', externalRecordId: `steps:${stepsProvider}:${day}`, syncedAt: new Date(now).toISOString() })
+          }
+        }
+      })
+      h.stepsReadAt = now
+      h.stepsCursor = now
     } catch (e) { fail(e) }
   }
 

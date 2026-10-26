@@ -19,12 +19,18 @@ import { dayNoteOf } from '../lib/day-notes.js'
 import { weighInAt } from '../lib/bodyweight.js'
 import WeightRate from '../components/WeightRate.jsx'
 import { SeasonDeco } from '../components/Seasonal.jsx'
+import { activityTotal, mealForDay, nutritionTotals } from '../lib/health.js'
 
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
 export default function Home() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
+  const nutritionToday = nutritionTotals(mealForDay(S, todayISO()))
+  const calorieGoal = S.nutrition?.goals?.calories || 2000
+  const stepsToday = activityTotal(S.activity?.records || [], 'steps', todayISO())
+  const activeCaloriesToday = activityTotal(S.activity?.records || [], 'active_energy', todayISO())
+  const stepGoal = S.activity?.stepGoal || 8000
   // The banner switched off and the sync stuck: a dot on the gear (Settings → Show connection status).
   const trouble = useConnectionTrouble()
   const [weekOffset, setWeekOffset] = useState(0)
@@ -107,9 +113,24 @@ export default function Home() {
   return <div className="narrow">
     <div className="hdr">
       <SeasonDeco spot="header-bats" />
-      <div><h1>{user ? t('Hi {0}', user.name) : 'openGym'}</h1><div className="sub">{today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}</div></div>
+      <div><h1>{user ? t('Hi {0}', user.name) : 'FORM.'}</h1><div className="sub">{today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}</div></div>
       <button className="iconbtn" onClick={() => nav('/settings')} aria-label={trouble ? t('Settings') + ', ' + t('Connection problem') : t('Settings')}><Icon name="gear" />{trouble && <span className="tab-dot" aria-hidden="true" />}</button>
     </div>
+
+    <section className="health-summary card" aria-label={t('Nutrition and activity')}>
+      <button className="health-summary-row" onClick={() => nav('/nutrition')}>
+        <span className="health-summary-icon"><Icon name="fork" /></span>
+        <span className="health-summary-copy"><b>{t('Nutrition')}</b><small>{t('Calories consumed')}</small></span>
+        <span className="health-summary-value">{Math.round(nutritionToday.calories)} <small>/ {calorieGoal} kcal · {Math.round(nutritionToday.protein)} g protein</small><i className="health-summary-track"><i style={{ '--health-progress': Math.min(1, nutritionToday.calories / calorieGoal) }} /></i></span>
+        <Icon name="chevronRight" className="chev" />
+      </button>
+      <button className="health-summary-row" onClick={() => nav('/activity')}>
+        <span className="health-summary-icon"><Icon name="walk" /></span>
+        <span className="health-summary-copy"><b>{t('Activity')}</b><small>{t('Steps')}</small></span>
+        <span className="health-summary-value">{Math.round(stepsToday).toLocaleString()} <small>/ {stepGoal.toLocaleString()} · {Math.round(activeCaloriesToday)} active kcal</small><i className="health-summary-track"><i style={{ '--health-progress': Math.min(1, stepsToday / stepGoal) }} /></i></span>
+        <Icon name="chevronRight" className="chev" />
+      </button>
+    </section>
 
     <div className="card">
       {/* A coach week runs by order, not by weekday, so its progress row stands in for the

@@ -78,6 +78,7 @@ import { bestWeightForEntry } from './history.js'
 import { convertStateUnit, convertBodyWeight } from './units.js'
 import { sanitizeAccent } from './accent.js'
 import { readDayNote as readNote } from './day-notes.js'
+import { mergeHealthNamespaces } from './health.js'
 
 const clone = o => JSON.parse(JSON.stringify(o))
 const list = v => (Array.isArray(v) ? v : [])
@@ -481,6 +482,11 @@ const RESET_LISTS = {
   workouts: workoutKey, routines: x => x?.id, customEx: x => x?.id, bodyweight: bodyweightKey,
   measurements: bodyweightKey, gymCards: x => x?.id, equipProfiles: x => x?.id, favEx: x => x,
 }
+const RESET_HEALTH_LISTS = {
+  nutritionFoods: { namespace: 'nutrition', field: 'foods', key: x => x?.id },
+  nutritionMeals: { namespace: 'nutrition', field: 'meals', key: x => x?.id },
+  activityRecords: { namespace: 'activity', field: 'records', key: x => x?.id },
+}
 const RESET_MAPS = ['exNotes', 'barWeights', 'exAliases', ...STAMPED_MAPS]
 /** An entry's name in resetIds: a workout's id (or day and start), a weigh-in's day and time, … */
 export const entryKey = (field, x) => String(RESET_LISTS[field](x))
@@ -492,7 +498,7 @@ const capIds = xs => (xs.length > RESET_ID_MAX ? xs.slice(xs.length - RESET_ID_M
 /** Every field's names from `a` then `b`, each once, capped (see RESET_ID_MAX). */
 export function mergeResetIds(a, b) {
   const out = {}
-  for (const f of [...Object.keys(RESET_LISTS), ...RESET_MAPS]) {
+  for (const f of [...Object.keys(RESET_LISTS), ...Object.keys(RESET_HEALTH_LISTS), ...RESET_MAPS]) {
     const xs = [...new Set([...list(a?.[f]), ...list(b?.[f])].filter(k => k != null).map(String))]
     if (xs.length) out[f] = capIds(xs)
   }
@@ -506,6 +512,7 @@ export function resetIdsOf(...copies) {
     if (!S || typeof S !== 'object') continue
     const one = {}
     for (const [f, key] of Object.entries(RESET_LISTS)) one[f] = list(S[f]).filter(x => x != null).map(key)
+    for (const [name, spec] of Object.entries(RESET_HEALTH_LISTS)) one[name] = list(S[spec.namespace]?.[spec.field]).filter(x => x != null).map(spec.key)
     for (const f of RESET_MAPS) one[f] = Object.keys(isMap(S[f]) ? S[f] : {})
     out = mergeResetIds(out, one)
   }
@@ -524,6 +531,13 @@ export function sinceReset(S, at, ids) {
       const gone = new Set(list(ids[f]).map(String))
       if (Array.isArray(S[f])) out[f] = clone(S[f].filter(x => x == null || !gone.has(String(key(x)))))
     }
+    for (const [name, spec] of Object.entries(RESET_HEALTH_LISTS)) {
+      const gone = new Set(list(ids[name]).map(String))
+      if (Array.isArray(S[spec.namespace]?.[spec.field])) out[spec.namespace] = {
+        ...out[spec.namespace],
+        [spec.field]: list(S[spec.namespace][spec.field]).filter(x => x == null || !gone.has(String(spec.key(x))))
+      }
+    }
     for (const f of RESET_MAPS) {
       const gone = new Set(list(ids[f]).map(String))
       if (isMap(S[f])) out[f] = clone(Object.fromEntries(Object.entries(S[f]).filter(([k]) => !gone.has(k))))
@@ -535,6 +549,9 @@ export function sinceReset(S, at, ids) {
     out.customEx = list(S.customEx).filter(c => c && after(c._ts))
     out.bodyweight = list(S.bodyweight).filter(e => e && after(e.t))
     out.measurements = list(S.measurements).filter(e => e && after(e.t))
+    for (const spec of Object.values(RESET_HEALTH_LISTS)) out[spec.namespace] = {
+      ...out[spec.namespace], [spec.field]: []
+    }
     // No time of their own: taken for what they were before the reset, which cleared them.
     out.equipProfiles = []
     out.gymCards = []
@@ -585,6 +602,11 @@ export function sinceReset(S, at, ids) {
 const DEL_LISTS = {
   workouts: workoutKey, routines: x => x?.id, customEx: x => x?.id, bodyweight: e => e?.d,
   measurements: e => e?.d, gymCards: x => x?.id, equipProfiles: x => x?.id, favEx: x => x,
+}
+const DEL_HEALTH_LISTS = {
+  nutritionFoods: { namespace: 'nutrition', field: 'foods', key: x => x?.id },
+  nutritionMeals: { namespace: 'nutrition', field: 'meals', key: x => x?.id },
+  activityRecords: { namespace: 'activity', field: 'records', key: x => x?.id },
 }
 // When an entry was last edited, to hold against a removal. Entries with no time of their own
 // (favourites, and cards and profiles saved before they were stamped) count as older than any
@@ -640,6 +662,20 @@ export function stampDeletions(prev, next, now = Date.now()) {
     }
     if (changed) { del[f] = capStamps(m); touched = true }
   }
+  for (const [name, spec] of Object.entries(DEL_HEALTH_LISTS)) {
+    const before = list(prev?.[spec.namespace]?.[spec.field]), after = list(next[spec.namespace]?.[spec.field])
+    const have = new Set(after.filter(x => x != null).map(x => String(spec.key(x))))
+    const m = isMap(del[name]) ? del[name] : {}
+    let changed = false
+    for (const x of before) {
+      if (x == null) continue
+      const k = String(spec.key(x))
+      if (!have.has(k)) { m[k] = Math.max(now, (Number(x._ts) || 0) + 1); changed = true }
+    }
+    const had = new Set(before.filter(x => x != null).map(x => String(spec.key(x))))
+    for (const k of have) if (!had.has(k) && Number(m[k]) > 0) { m[k] = -now; changed = true }
+    if (changed) { del[name] = capStamps(m); touched = true }
+  }
   if (touched) next.deleted = del
   return next
 }
@@ -652,7 +688,7 @@ const laterDel = (v, cur) => {
 /** Both copies' records of removals: per entry, the later stamp. */
 export function mergeDeletions(a, b) {
   const out = {}
-  for (const f of Object.keys(DEL_LISTS)) {
+  for (const f of [...Object.keys(DEL_LISTS), ...Object.keys(DEL_HEALTH_LISTS)]) {
     const x = isMap(a?.[f]) ? a[f] : {}, y = isMap(b?.[f]) ? b[f] : {}
     const m = { ...x }
     // On equal stamps the add-back (negative) wins, whichever copy is first: two devices whose
@@ -683,6 +719,12 @@ function applyDeletions(S, deleted) {
       return !drop
     })
   }
+  for (const [name, spec] of Object.entries(DEL_HEALTH_LISTS)) {
+    const m = deleted[name]
+    const entries = S[spec.namespace]?.[spec.field]
+    if (!isMap(m) || !Array.isArray(entries)) continue
+    S[spec.namespace][spec.field] = entries.filter(x => x == null || !(Number(m[String(spec.key(x))]) > 0 && Number(m[String(spec.key(x))]) >= (Number(x._ts) || 0)))
+  }
   return gone
 }
 
@@ -699,6 +741,7 @@ function applyDeletions(S, deleted) {
 const OWN_MERGE = new Set([
   '_ts', '_rev', '_wid', '_wids', '_unstamped', '_prior', 'active', 'unit', 'unitSet', 'resetAt', 'resetIds', 'deleted', 'edited', 'undone', 'routineOrder',
   'workouts', 'routines', 'customEx', 'equipProfiles', 'gymCards', 'bodyweight', 'measurements', 'favEx',
+  'nutrition', 'activity',
   'exWeights', 'balanceOverrides', 'loadKind', 'plates', 'dbLoad', 'dumbbells', 'stackWeights', 'dayNotes', 'dayPhotos',
 ])
 // Stamped per key instead of whole: one day of the plan, one exercise's note or bar.
@@ -877,6 +920,7 @@ export function mergeStates(a0, b0, { prefer } = {}) {
     }
   }
   out.workouts.sort(byDayStart)
+  Object.assign(out, mergeHealthNamespaces(n, o))
   for (const f of ['routines', 'customEx', 'equipProfiles', 'gymCards']) {
     if (list(n[f]).length || list(o[f]).length) out[f] = (f === 'routines' ? unionByNeighbours : unionById)(n[f], o[f]).map(clone)
   }

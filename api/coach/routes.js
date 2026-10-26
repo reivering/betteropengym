@@ -189,7 +189,7 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
           http: !!p.http, baseUrl: !!p.baseUrl, keyOptional: !!p.keyOptional, keyPlaceholder: p.keyPlaceholder || null,
           defaultModel: p.defaultModel || null,
           // Which providers already hold a key — so switching chips is visibly not a reset.
-          connected: !!(cfgStore.authFor(cfg, id) && cfgStore.authFor(cfg, id).data)
+          connected: !!(cfgStore.authFor(cfg, id) && cfgStore.authFor(cfg, id).data) || (id === 'codex' && cfgStore.codexLoginStatus().connected)
         })),
         model: cfgStore.modelFor(cfg),
         models: cfg.models,
@@ -213,6 +213,9 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
         auth: (() => {
           const meta = cfgStore.providerMeta(cfg);
           const rec = cfgStore.authFor(cfg);
+          if (cfg.provider === 'codex' && !rec && cfgStore.codexLoginStatus().connected) {
+            return { state: 'connected', type: 'chatgpt-cli', account: null, connectedAt: cfgStore.codexLoginStatus().connectedAt };
+          }
           if (!meta.oauthEnv && !meta.apiKeyEnv) return { state: 'not-required' };
           if (!rec || !rec.data) return { state: meta.keyOptional ? 'optional' : 'none' };
           if (!cfgStore.decrypt(rec.data)) return { state: 'unreadable' };
@@ -356,7 +359,9 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
       const body = await readBody(req);
       const provider = body.provider !== undefined ? String(body.provider) : cfgStore.load().provider;
       if (!cfgStore.PROVIDERS[provider]) return json(res, 400, { error: 'unknown provider' });
-      cfgStore.saveAuth(provider, null);
+      const stored = cfgStore.authFor(cfgStore.load(), provider);
+      if (stored) cfgStore.saveAuth(provider, null);
+      else if (provider === 'codex' && !cfgStore.clearCodexLogin()) return json(res, 500, { error: 'Could not remove the Codex sign-in cache' });
       json(res, 200, { ok: true });
     },
 
