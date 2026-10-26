@@ -382,9 +382,10 @@ function Schedule({ S, update, nav, mode }) {
       <SeasonDeco spot="plan-card" />
     </Section>
 
-    {!S.routines.length && <div className="empty plan-empty">
-      <div className="ico"><Icon name="clipboard" /></div>{t('No routines yet.')}<br />{t('Make one, or grab the starter plan to get going.')}
-      <div style={{ marginTop: 12 }}><Button icon="clipboard" onClick={starterPlanSheet}>{t('Load starter plan')}</Button></div>
+    {!S.routines.length && <div className="plan-empty">
+      <h2>{t('Set up your training')}</h2>
+      <p>{t('Choose a starter plan or create your first routine.')}</p>
+      <Button icon="clipboard" onClick={starterPlanSheet}>{t('Load starter plan')}</Button>
     </div>}
 
     {/* A queue payload that arrived unusable: a fix-up, shown whichever way you train. Giving it
@@ -396,7 +397,7 @@ function Schedule({ S, update, nav, mode }) {
       </div>
     </div>}
 
-    {mode === 'week' ? <>
+    {!!S.routines.length && (mode === 'week' ? <>
       <h4 className="sec">{t('This week')}</h4>
       <div className="list plan-week">{weekOrder(ws).map(d => dayRow(d))}</div>
       <p className="sect-f">{t('Want two routines on one day? Tap the day and pick both.')}</p>
@@ -464,7 +465,7 @@ function Schedule({ S, update, nav, mode }) {
         <div className="list plan-week">{plannedDays.map(d => dayRow(d, extraRoutines(d)))}</div>
         <p className="sect-f">{t('These count on top of the loop. Tap a day to change or clear it.')}</p>
       </>}
-    </div>}
+    </div>)}
 
     {/* Weekly muscle volume is analysis: it moved to Stats, next to Muscle balance. Stats only
         shows that card once there is a routine, so the link waits for one too. */}

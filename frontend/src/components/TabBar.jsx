@@ -31,7 +31,7 @@ export default function TabBar({ onStart }) {
   if (!user && !isGuest) return null
   const cur = loc.pathname.split('/')[1] || 'home'
   // A screen without a tab of its own lights the tab it is opened from (Muscles from both).
-  const PARENT = { history: 'stats', 'structural-balance': 'stats', 'progress-photos': 'stats', measurements: 'stats', settings: 'home', checkin: 'home', muscles: 'library', nutrition: 'home', activity: 'home' }
+  const PARENT = { history: 'stats', 'structural-balance': 'stats', 'progress-photos': 'stats', measurements: 'health', settings: 'home', checkin: 'home', muscles: 'library', nutrition: 'health', activity: 'health' }
   const parent = cur === 'muscles' && loc.state?.from === '/stats' ? 'stats' : PARENT[cur]
   const on = k => cur === k || parent === k
 
@@ -50,25 +50,24 @@ export default function TabBar({ onStart }) {
     nav('/workout')
   }
 
-  return (
-    <nav id="tabbar">
-      <Tab active={on('home')} icon="house" label={t('Home')} dot={trouble} onClick={() => switchTab('/home')} />
+  const planned = effectiveRoutines(S, todayISO()).filter(r => r.ex.length)
+  const actionLabel = S.active ? (S.active.editingWorkoutId ? t('Edit workout') : t('Resume')) : t('Start workout')
+  return <>
+    <button className={'session-action' + (!S.active && cur !== 'home' ? ' compact' : '')} onClick={startWorkout} aria-label={running ? t('Resume') : actionLabel}>
+      <span className="session-action-icon"><Icon name={S.active ? S.active.editingWorkoutId ? 'pencil' : 'play' : 'play'} /></span>
+      <span className="session-action-copy"><strong>{actionLabel}</strong><small>{S.active ? S.active.name : loc.pathname === '/home' && planned.length ? planned.map(r => r.name).join(' + ') : t('Ready when you are')}</small></span>
+      {running && <span className="session-action-time"><Elapsed start={S.active.start} /></span>}
+    </button>
+    <nav id="tabbar" aria-label={t('Main navigation')}>
+      <Tab active={on('home')} icon="house" label={t('Today')} dot={trouble} onClick={() => switchTab('/home')} />
       <Tab active={on('plan')} icon="calendar" label={t('Plan')} onClick={() => switchTab('/plan')} />
-      {/* On the workout screen itself there is nothing to resume, so the button reads as the
-          tab it is and stays lit (#29); anywhere else it brings you back to the exercise you
-          were on — the marker is kept in S.active.cur and never moves on its own (#21). The
-          glyph is always play: start and resume are one concept, and an exercise is a dumbbell.
-          A live session you stepped away from shows its running time instead of a word, the
-          button still named Resume; a past workout being edited or logged after the fact has no
-          clock to run. */}
-      <button className={'start' + (S.active ? ' rec' : '') + (S.active && cur === 'workout' ? ' on' : '')} onClick={startWorkout}
-        aria-label={running ? t('Resume') : undefined}>
-        <span className="cir"><Icon name="play" /></span>
-        {running ? <span className="tab-time"><Elapsed start={S.active.start} /></span>
-          : <span>{S.active ? (cur === 'workout' ? t('Workout') : S.active.editingWorkoutId ? t('Edit workout') : t('Resume')) : t('Start')}</span>}
+      <Tab active={on('health')} icon="heart" label={t('Health')} onClick={() => switchTab('/health')} />
+      <Tab active={on('stats')} icon="chart" label={t('Progress')} onClick={() => switchTab('/stats')} />
+      <Tab active={on('library')} icon="dumbbell" label={t('Library')} onClick={() => switchTab('/library')} />
+      <button className={'nav-utility' + (cur === 'settings' ? ' on' : '')} onClick={() => nav('/settings')}>
+        <span className="tab-ic"><Icon name="gear" /></span>
+        <span>{t('Settings')}{user?.name ? <small>{user.name}</small> : null}</span>
       </button>
-      <Tab active={on('stats')} icon="chart" label={t('Stats')} onClick={() => switchTab('/stats')} />
-      <Tab active={on('library')} icon="dumbbell" label={t('Exercises')} onClick={() => switchTab('/library')} />
     </nav>
-  )
+  </>
 }

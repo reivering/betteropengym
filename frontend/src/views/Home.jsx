@@ -1,15 +1,15 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
-import { effectiveRoutines, effectiveRoutineIds, nextTrainingDay, streakWeeks, lastBW, setsDoneActive } from '../lib/history.js'
+import { effectiveRoutines, effectiveRoutineIds, nextTrainingDay, lastBW, setsDoneActive } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, isoOf, weekStartOf, weekDayOffset, DAYS, DAYN } from '../lib/format.js'
-import { t, tn, dateLocale } from '../lib/i18n.js'
-import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, starterPlanSheet, bwDeltaColor, weighInsSheet } from '../sheets.jsx'
+import { t, dateLocale } from '../lib/i18n.js'
+import { bwSheet, goalSheet, dayOverrideSheet, startFlow, starterPlanSheet, bwDeltaColor, weighInsSheet } from '../sheets.jsx'
 import LineChart from '../components/LineChart.jsx'
 import Icon from '../components/Icon.jsx'
 import QueueRow from '../components/QueueRow.jsx'
 import MiniBodyMap from '../components/MiniBodyMap.jsx'
-import { queueOf, queueView, weekTally, pinState } from '../lib/queue.js'
+import { queueOf, queueView, pinState } from '../lib/queue.js'
 import { scheduleModeOf } from '../lib/rotation.js'
 import { useConnectionTrouble } from '../components/SyncBanner.jsx'
 import { Button } from '../components/ui.jsx'
@@ -19,18 +19,18 @@ import { dayNoteOf } from '../lib/day-notes.js'
 import { weighInAt } from '../lib/bodyweight.js'
 import WeightRate from '../components/WeightRate.jsx'
 import { SeasonDeco } from '../components/Seasonal.jsx'
-import { activityTotal, mealForDay, nutritionTotals } from '../lib/health.js'
+import { activityTotal, mealForDay, nutritionTotals, preferredRecords } from '../lib/health.js'
 
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
 export default function Home() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
-  const nutritionToday = nutritionTotals(mealForDay(S, todayISO()))
+  const mealsToday = mealForDay(S, todayISO())
+  const nutritionToday = nutritionTotals(mealsToday)
   const calorieGoal = S.nutrition?.goals?.calories || 2000
-  const stepsToday = activityTotal(S.activity?.records || [], 'steps', todayISO())
+  const activeEnergyToday = preferredRecords(S.activity?.records || [], 'active_energy', todayISO())
   const activeCaloriesToday = activityTotal(S.activity?.records || [], 'active_energy', todayISO())
-  const stepGoal = S.activity?.stepGoal || 8000
   // The banner switched off and the sync stuck: a dot on the gear (Settings → Show connection status).
   const trouble = useConnectionTrouble()
   const [weekOffset, setWeekOffset] = useState(0)
@@ -98,10 +98,7 @@ export default function Home() {
   // would otherwise still read as "this app manages it" (lib/rotation.js).
   const managedQueue = !!liveQ && !!S.rotation && liveQ.rotationId === S.rotation.id
   // On a rest day, saying when you train next beats leaving the row as a full stop.
-  const next = !S.active && !todayRoutines.length && !(rotating && !plannerQueue) ? nextTrainingDay(S, todayISO()) : null
-  // The streak card's fraction: this calendar week's workouts over the weekdays with a plan, or,
-  // in a coach week, the queue's sessions and your own days together (lib/queue.js weekTally).
-  const { done: doneThisWeek, planned: plannedPerWeek } = weekTally(S, todayISO())
+  const next = S.routines.length && !S.active && !todayRoutines.length && !(rotating && !plannerQueue) ? nextTrainingDay(S, todayISO()) : null
   const bwPoints = S.bodyweight.slice(-30).map(b => ({ t: weighInAt(b), y: b.w, d: b.d }))
 
   // today's session shown right under the week strip
@@ -117,21 +114,6 @@ export default function Home() {
       <button className="iconbtn" onClick={() => nav('/settings')} aria-label={trouble ? t('Settings') + ', ' + t('Connection problem') : t('Settings')}><Icon name="gear" />{trouble && <span className="tab-dot" aria-hidden="true" />}</button>
     </div>
 
-    <section className="health-summary card" aria-label={t('Nutrition and activity')}>
-      <button className="health-summary-row" onClick={() => nav('/nutrition')}>
-        <span className="health-summary-icon"><Icon name="fork" /></span>
-        <span className="health-summary-copy"><b>{t('Nutrition')}</b><small>{t('Calories consumed')}</small></span>
-        <span className="health-summary-value">{Math.round(nutritionToday.calories)} <small>/ {calorieGoal} kcal · {Math.round(nutritionToday.protein)} g protein</small><i className="health-summary-track"><i style={{ '--health-progress': Math.min(1, nutritionToday.calories / calorieGoal) }} /></i></span>
-        <Icon name="chevronRight" className="chev" />
-      </button>
-      <button className="health-summary-row" onClick={() => nav('/activity')}>
-        <span className="health-summary-icon"><Icon name="walk" /></span>
-        <span className="health-summary-copy"><b>{t('Activity')}</b><small>{t('Steps')}</small></span>
-        <span className="health-summary-value">{Math.round(stepsToday).toLocaleString()} <small>/ {stepGoal.toLocaleString()} · {Math.round(activeCaloriesToday)} active kcal</small><i className="health-summary-track"><i style={{ '--health-progress': Math.min(1, stepsToday / stepGoal) }} /></i></span>
-        <Icon name="chevronRight" className="chev" />
-      </button>
-    </section>
-
     <section className="home-agenda" aria-label={t('Training schedule')}>
     <div className="card home-agenda-card">
       {/* A coach week runs by order, not by weekday, so its progress row stands in for the
@@ -140,30 +122,37 @@ export default function Home() {
       {rotating ? (queue ? <QueueRow S={S} today={todayISO()} onStart={onQueueStart} managed={managedQueue} /> : <div className="empty">
         {t('No rotation yet. Add routines to it in Plan.')}
         <div style={{ marginTop: 10 }}><Button size="sm" variant="tinted" onClick={() => nav('/plan')}>{t('Set up in Plan')}</Button></div>
-      </div>) : <>
+      </div>) : S.routines.length ? <>
         <div className="row between home-week-nav" style={{ marginBottom: 8 }}>
           <button className="iconbtn" style={{ width: 30, height: 30, fontSize: 15 }} onClick={() => setWeekOffset(w => w - 1)} aria-label={t('Previous week')}><Icon name="chevronLeft" /></button>
           <div className="small muted" style={{ fontWeight: 500 }}>{wkLabel}</div>
           <button className="iconbtn" style={{ width: 30, height: 30, fontSize: 15 }} onClick={() => setWeekOffset(w => w + 1)} aria-label={t('Next week')}><Icon name="chevronRight" /></button>
         </div>
         <div className="week">{strip}</div>
-      </>}
+      </> : <div className="home-setup">
+        <strong>{t('Set up your training')}</strong>
+        <p>{t('Make a routine or start with a ready-made plan.')}</p>
+        <div className="home-setup-actions">
+          <Button variant="primary" icon="calendar" onClick={() => nav('/plan')}>{t('Build my plan')}</Button>
+          <Button variant="plain" icon="clipboard" onClick={starterPlanSheet}>{t('Load starter plan')}</Button>
+        </div>
+      </div>}
       {/* Once today's session is logged the row stops asking for it. The week strip already
           knew (its dot goes 'done'); this row did not, so a finished day kept showing the
           routine name behind a green Start tag and read as still outstanding (issue #4).
           An in-progress session still wins — that one is happening right now. Tapping the
           row keeps working, so a second session in one day is a tap away, just not urged. */}
-      <div className="today-row" {...tappable(onToday)}>
+      {!!(todayRoutines.length || S.active || S.routines.length) && <div className="today-row" {...tappable(onToday)}>
         <div className="row" style={{ gap: 9, minWidth: 0 }}>
           <span className="lrow-i" style={{ background: S.active ? 'var(--orange)' : doneToday ? 'var(--surface-3)' : routine ? 'var(--acc)' : 'var(--surface-3)' }}>
-            <Icon name={S.active ? (editingSaved ? 'pencil' : 'play') : doneToday ? 'checkCircle' : routine ? glyphOf(routine.emoji) : 'moon'}
+            <Icon name={S.active ? (editingSaved ? 'pencil' : 'play') : doneToday ? 'checkCircle' : routine ? glyphOf(routine.emoji) : 'calendar'}
               style={doneToday && !S.active ? { color: 'var(--green)' } : undefined} />
           </span>
           <div style={{ minWidth: 0 }}>
             <div className="lbl2">{t('Today')}</div>
             <div className="ttl">{S.active ? (editingSaved ? S.active.name : t('{0} (in progress)', S.active.name))
               : doneToday ? (doneToday.name ? t('{0} (done)', doneToday.name) : t('Workout done'))
-              : routine ? todayName : t('Rest day')}{todayOvr && routine && !doneToday ? ' · ' + t('rescheduled') : ''}</div>
+              : routine ? todayName : t('No session planned')}{todayOvr && routine && !doneToday ? ' · ' + t('rescheduled') : ''}</div>
             {next && !doneToday && <div className="ss">{t('Next session: {0}, {1}', t(DAYN[next.weekday]), next.routine.name)}</div>}
           </div>
         </div>
@@ -171,7 +160,7 @@ export default function Home() {
           : doneToday ? <span className="tag" style={{ color: 'var(--green)', background: 'color-mix(in srgb,var(--green) 16%,transparent)' }}>{t('Done')}</span>
           : routine ? <span className="row" style={{ gap: 8 }}><MiniBodyMap routines={todayRoutines} body={S.body} /><span className="tag acc">{t('Start')}</span></span>
           : <Icon name="plus" className="chev" />}
-      </div>
+      </div>}
       {/* The row above starts today's plan in one tap, and so does the Start button in the tab
           bar — which is the whole problem when you want something else. Both jump straight into
           the planned session whenever there is one, so the Start screen (a freestyle session,
@@ -204,19 +193,22 @@ export default function Home() {
     )}
     </section>
 
-    <div className="home-side">
-    {!S.routines.length && !S.active && (
-      <div className="card home-welcome">
-        <div className="row" style={{ gap: 10, marginBottom: 6 }}>
-          <span className="lrow-i"><Icon name="calendar" /></span>
-          <div className="big" style={{ fontSize: 22 }}>{t('Welcome!')}</div>
-        </div>
-        <div className="muted small" style={{ marginBottom: 12 }}>{t('Set up your weekly routine to get going, or grab a ready-made starter plan.')}</div>
-        <Button variant="primary" icon="clipboard" onClick={starterPlanSheet}>{t('Load starter plan')}</Button>
-        <div style={{ height: 8 }} /><Button onClick={() => nav('/plan')}>{t('Build my own plan')}</Button>
-      </div>
-    )}
+    <section className="health-summary" aria-label={t('Nutrition and activity')}>
+      <button className="health-summary-row" onClick={() => nav('/nutrition')}>
+        <span className="health-summary-icon"><Icon name="fork" /></span>
+        <span className="health-summary-copy"><b>{t('Nutrition')}</b><small>{mealsToday.length ? t('Calories consumed') : t('No food logged today')}</small></span>
+        <span className="health-summary-value">{mealsToday.length ? <>{Math.round(nutritionToday.calories)} <small>/ {calorieGoal} kcal · {Math.round(nutritionToday.protein)} g protein</small></> : t('Not recorded')}</span>
+        <Icon name="chevronRight" className="chev" />
+      </button>
+      <button className="health-summary-row" onClick={() => nav('/activity')}>
+        <span className="health-summary-icon"><Icon name="flame" /></span>
+        <span className="health-summary-copy"><b>{t('Activity')}</b><small>{t('Active energy')}</small></span>
+        <span className="health-summary-value">{activeEnergyToday.length ? `${Math.round(activeCaloriesToday)} kcal` : t('Not recorded')}</span>
+        <Icon name="chevronRight" className="chev" />
+      </button>
+    </section>
 
+    <div className="home-side">
     {S.showWeightCard !== false && <div className="card home-weight">
       <div className="row between bw-head" style={{ marginBottom: 6 }}>
         <h2 style={{ margin: 0 }}>{t('Body weight')}</h2>
@@ -255,19 +247,6 @@ export default function Home() {
         : t("No weigh-ins yet. Log your weight to start the curve (we also ask before every workout).")}</div>}
     </div>}
 
-    <div className="card home-streak tappable" style={{ cursor: 'pointer' }} {...tappable(() => calendarSheet())}>
-      <SeasonDeco spot="home-streak" />
-      <div className="row between">
-        <div>
-          <div className="row" style={{ gap: 7, fontSize: 22, fontWeight: 600, letterSpacing: '-.021em' }}>
-            <Icon name="flame" style={{ color: 'var(--orange)' }} />
-            {t('{0} week streak', streakWeeks(S))}
-          </div>
-          <div className="muted small" style={{ marginTop: 2 }}>{doneThisWeek}{plannedPerWeek ? ' / ' + plannedPerWeek : ''} {t('this week')} · {tn('{0} workout total', '{0} workouts total', S.workouts.length)}</div>
-        </div>
-        <Icon name="calendar" className="chev" style={{ fontSize: 20 }} />
-      </div>
-    </div>
     </div>
   </div>
 }

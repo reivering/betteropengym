@@ -3,11 +3,11 @@ import { hideBoot } from './lib/boot.js'
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation, useNavigationType } from 'react-router-dom'
 import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
-import { bindUI } from './components/ui.jsx'
+import { bindUI, Button } from './components/ui.jsx'
 import { setWeightDecimals } from './lib/format.js'
 import { accentValue, applyAccent } from './lib/accent.js'
 import { seasonAccent } from './lib/seasonal.js'
-import { setLang, useLang, baseLang } from './lib/i18n.js'
+import { setLang, useLang, baseLang, t } from './lib/i18n.js'
 import { effectiveLang } from './lib/default-lang.js'
 import { setPlayOnSilent, setVibrate, setAlarmBuzzer, setNativeBuzzer } from './lib/sound.js'
 import { buzzAsAlarm } from './lib/rest-alert.js'
@@ -72,6 +72,7 @@ const ProgressPhotos = lazyView(() => import('./views/ProgressPhotos.jsx'))
 // The tabs and screens past Home (Stats, History, the Library, Settings, ...) as well: a start
 // only needs Home, and these are fetched right behind it the same way.
 const CheckIn = lazyView(() => import('./views/CheckIn.jsx'))
+const Health = lazyView(() => import('./views/Health.jsx'))
 const Nutrition = lazyView(() => import('./views/Nutrition.jsx'))
 const Activity = lazyView(() => import('./views/Activity.jsx'))
 const RoutineEdit = lazyView(() => import('./views/RoutineEdit.jsx'))
@@ -104,8 +105,21 @@ function applyPrefs(theme, accent) {
   de.dataset.theme = resolveTheme(theme)
   applyAccent(de, accent, de.dataset.theme)
   const meta = document.querySelector('meta[name="theme-color"]')
-  if (meta) meta.content = de.dataset.theme === 'light' ? '#f2f2f7' : '#0b1224'
+  if (meta) meta.content = de.dataset.theme === 'light' ? '#f5f6f4' : '#101112'
   if (MOBILE) setSystemBarsLight(de.dataset.theme === 'light')
+}
+
+function MissingRoute() {
+  const navigate = useNavigate()
+  const active = useStore(s => !!s.S.active)
+  return <main className="missing-route">
+    <h1>{t('This page isn’t here')}</h1>
+    <p>{t('The link may be old or mistyped. Your training data is still here.')}</p>
+    <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
+      <Button variant="primary" icon="house" onClick={() => navigate('/home')}>{t('Go to Today')}</Button>
+      {active && <Button icon="play" onClick={() => navigate('/workout')}>{t('Resume workout')}</Button>}
+    </div>
+  </main>
 }
 
 function Shell() {
@@ -292,7 +306,9 @@ function Shell() {
 
   const view = l => (!authed ? <Login /> : needsMobileOnboarding ? <MobileOnboarding /> : permSteps ? <PermissionSteps /> : (
     <Routes location={l}>
+      <Route path="/" element={<Navigate to="/home" replace />} />
       <Route path="/home" element={<Home />} />
+      <Route path="/health" element={<Health />} />
       <Route path="/nutrition" element={<Nutrition />} />
       <Route path="/activity" element={<Activity />} />
       {/* Gym check-in — switched off in Settings, the route falls through to the
@@ -318,7 +334,7 @@ function Shell() {
       <Route path="/coach/proposal" element={<Navigate to="/coach" replace />} />
       <Route path="/coach/setup" element={<CoachSetup />} />
       <Route path="/admin" element={user?.admin ? <Admin /> : <Navigate to="/home" replace />} />
-      <Route path="*" element={<Navigate to="/home" replace />} />
+      <Route path="*" element={<MissingRoute />} />
     </Routes>
   ))
   const showPreview = !!preview && preview !== loc.pathname && authed && !needsMobileOnboarding && !permSteps
