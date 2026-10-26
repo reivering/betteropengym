@@ -60,6 +60,7 @@ export default function CoachIntake() {
   const nav = useNavigate()
   const [params] = useSearchParams()
   const editing = params.get('edit') === '1'
+  const returnToPlan = params.get('return') === 'plan'
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
   const config = useStore(s => s.config)
@@ -102,7 +103,7 @@ export default function CoachIntake() {
     const target = !DEMO && consentTarget(info, coachVia())
     if (target && !target.local) allowAi(target).catch(() => {})
     update(s => { s.coach = { ...(s.coach || emptyCoach()), consent: { agreedAt: new Date().toISOString(), version: CONSENT_VERSION } } })
-    if (reconsentOnly) nav('/coach', { replace: true })
+    if (reconsentOnly) nav(returnToPlan ? '/plan' : '/coach', { replace: true })
     else setStep(step + 1)
   }
 
@@ -123,7 +124,7 @@ export default function CoachIntake() {
     setBusy(true)
     try {
       await requestPlan(profile)
-      nav('/coach', { replace: true })
+      nav(returnToPlan ? '/plan' : '/coach', { replace: true })
     } catch (e) {
       // The server's refusal is English with its class beside it; the class picks the line.
       // "Not now" on the data-sharing question sends nothing and says nothing; the answers are saved.

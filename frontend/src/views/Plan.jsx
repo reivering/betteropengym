@@ -19,8 +19,10 @@ import { tappable } from '../lib/use-sheet-keyboard.js'
 import { useListReorder, moved } from '../lib/use-list-reorder.js'
 import { glyphOf, DEFAULT_GLYPH } from '../lib/glyphs.js'
 import { DEMO } from '../lib/demo.js'
+import { EXDB } from '../lib/exercises.js'
 import { MOBILE } from '../lib/mobile.js'
-import { coachAvailable } from '../lib/coach.js'
+import { coachAvailable, hasConsent, applyCreatedPlan, appendChat, recordDismissal } from '../lib/coach.js'
+import { requestPlan, useCoachStatus, resolvePending, JOB_ERRORS } from '../lib/coach-api.js'
 import { queueOf, queueView } from '../lib/queue.js'
 import { deriveSessionName } from '../lib/session-merge.js'
 import { markUndone, undoMarks } from '../lib/sync-merge.js'
@@ -136,6 +138,8 @@ export default function Plan() {
   const coachMode = useStore(s => s.coachLocal?.mode)
   const user = useStore(s => s.user)
   const toast = useUI(s => s.toast)
+  const [building, setBuilding] = useState(false)
+  const [coachError, setCoachError] = useState('')
   const fileRef = useRef(null)
   const [view, setViewState] = useState(readView)
   const setView = v => {
@@ -148,6 +152,7 @@ export default function Plan() {
      Coach surface uses, so an instance without the feature sees exactly the header it would have
      without it. */
   const showCoach = coachAvailable(config, user, { demo: DEMO, mobile: MOBILE, coachMode })
+  const { job, pending, refresh } = useCoachStatus(showCoach)
   const openCoach = () => {
     if (showCoach) nav('/coach')
     else if (!user) nav('/settings/account')
@@ -155,6 +160,33 @@ export default function Plan() {
     else if (user.admin) nav('/admin', { state: { section: 'coach' } })
     else toast(t('The AI Coach is not enabled on this server yet. Ask your admin to turn it on.'))
   }
+  const buildWithCoach = async () => {
+    if (!showCoach) { openCoach(); return }
+    if (!S.coach?.profile || !hasConsent(S)) { nav('/coach/intake?return=plan'); return }
+    setBuilding(true); setCoachError('')
+    try { await requestPlan(S.coach.profile); setBuilding(false); await refresh() }
+    catch (e) { setCoachError(JOB_ERRORS[e.data?.code] || e.message || t('Could not ask the Coach')); setBuilding(false) }
+  }
+  const acceptCoachPlan = schedule => {
+    try {
+      update(s => {
+        const result = applyCreatedPlan(s, pending, { schedule })
+        appendChat(s, { role: 'coach', kind: 'applied', ref: result.logId, text: schedule
+          ? t('Your plan is live. The routines and weekly schedule are ready.')
+          : t('Your plan is live. The routines were added and your schedule is unchanged.') })
+      })
+      resolvePending({ accepted: ['plan'] }).catch(() => {})
+      toast(t('Your plan is live')); refresh()
+    } catch (e) { toast(e.message || t('That proposal can’t be read.')) }
+  }
+  const dismissCoachPlan = () => confirmSheet({
+    title: t('Discard this plan?'), message: t('Nothing is saved, and you can ask again anytime.'),
+    confirmText: t('Discard'), danger: true,
+    onConfirm: () => {
+      update(s => { const ref = recordDismissal(s, pending); appendChat(s, { role: 'coach', kind: 'dismissed', ref, text: t('Plan discarded.') }) })
+      resolvePending({ dismissed: true }).catch(() => {}); refresh()
+    }
+  })
 
   // Share, print, import and starter plans: one menu behind the header button, so the
   // two views below are only about the plan itself.
@@ -187,9 +219,42 @@ export default function Plan() {
     <input ref={fileRef} type="file" accept="application/json,.json" onChange={pickFile} hidden />
     <Segmented className="plan-views" value={view} onChange={setView}
       options={[{ value: 'schedule', label: t('Schedule') }, { value: 'routines', label: t('Routines') }]} />
+    {showCoach && <section className="coach-plan-builder" aria-label={t('AI workout plan')}>
+      {!pending?.kind || pending.kind !== 'create' ? <>
+        <div><strong>{t('Build a gym plan with AI')}</strong><p>{t('Get a complete set of routines tailored to your goal, schedule and equipment. Review it here before adding it.')}</p></div>
+        <Button variant="tinted" icon="sparkles" disabled={building || !!job} onClick={buildWithCoach}>
+          {building || job?.kind === 'create' ? t('Building your plan…') : t('Build my plan')}
+        </Button>
+        {coachError && <p className="coach-plan-error" role="alert">{coachError}</p>}
+      </> : <CoachPlanReview proposal={pending} onAccept={acceptCoachPlan} onDismiss={dismissCoachPlan} />}
+    </section>}
     {view === 'routines'
       ? <Routines S={S} update={update} nav={nav} />
       : <Schedule S={S} update={update} nav={nav} mode={mode} />}
+  </div>
+}
+
+function CoachPlanReview({ proposal, onAccept, onDismiss }) {
+  const bundle = proposal.bundle || {}
+  const routines = bundle.routines || []
+  return <div className="coach-plan-review">
+    <div className="coach-plan-kicker">{t('Your AI workout plan')}</div>
+    <h2>{bundle.name || t('Coach plan')}</h2>
+    {bundle.summary && <p>{bundle.summary}</p>}
+    <div className="coach-plan-routines">{routines.map((routine, i) => <article key={routine.id || i}>
+      <strong>{routine.name || t('Routine {0}', i + 1)}</strong>
+      <ul>{(routine.ex || []).map((exercise, j) => {
+        const found = typeof exercise === 'string' ? exercise : typeof exercise?.id === 'string' ? exercise.id : exercise?.id?.id
+        const label = exercise?.name || exercise?.title || EXDB.find(x => x.id === found)?.name || found || t('Exercise')
+        return <li key={found || j}>{label}{exercise?.sets ? ` · ${exercise.sets} ${t('sets')}` : ''}{exercise?.reps ? ` × ${exercise.reps}` : ''}</li>
+      })}</ul>
+    </article>)}</div>
+    <small>{t('Review the routines, then choose whether to set their days in your schedule.')}</small>
+    <div className="coach-plan-actions">
+      <Button variant="tinted" icon="check" onClick={() => onAccept(true)}>{t('Add plan and set schedule')}</Button>
+      <Button variant="secondary" onClick={() => onAccept(false)}>{t('Add routines only')}</Button>
+      <button className="coach-plan-discard" onClick={onDismiss}>{t('Discard')}</button>
+    </div>
   </div>
 }
 
