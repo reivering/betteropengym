@@ -178,6 +178,14 @@ function saveDb() {
   try { atomicWrite(dbFile + '.bak', text, 0o600); }
   catch (e) { console.error('db.json.bak could not be written', e.message); }
 }
+// Account activity is useful beyond the shorter audit-log retention window. Count only
+// successful account sign-ins; for older profiles this records the start of reliable tracking.
+function noteSignIn(user, at = new Date().toISOString(), persist = true) {
+  user.lastSignInAt = at;
+  user.signInCount = Number.isSafeInteger(user.signInCount) && user.signInCount >= 0 ? user.signInCount + 1 : 1;
+  user.signInTrackingSince ||= at;
+  if (persist) try { saveDb(); } catch (e) { console.error('db save failed while recording sign-in', e.message); }
+}
 // Flushed before and after the rename (durable.js): a host reset must not bring back the file
 // the client was told had been replaced.
 function atomicWrite(file, content, mode) { durableWrite(file, content, mode); }
@@ -1425,6 +1433,7 @@ const passwordRoutes = {
       // The same question again: the password may have changed while the new hash was made.
       if (!still()) return json(res, 401, WRONG);
     }
+    noteSignIn(user);
     audit(req, 'auth.password.ok', { user });
     json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
   },
@@ -1483,7 +1492,7 @@ const passwordRoutes = {
     // No await from here to the push: nothing can take the address between this check and it.
     if (email && emailTaken(email)) return emailRefused();
     const created = new Date().toISOString();
-    const user = { id: crypto.randomBytes(12).toString('base64url'), name, created, pw: { h, set: created }, ...(email ? { email } : {}) };
+    const user = { id: crypto.randomBytes(12).toString('base64url'), name, created, lastSignInAt: created, signInCount: 1, signInTrackingSince: created, pw: { h, set: created }, ...(email ? { email } : {}) };
     if (inv) { user.invitedBy = inv.code; inv.usedBy = user.id; inv.usedAt = created; }
     claimFirstAdmin(req, user);
     db.users.push(user);
@@ -1937,6 +1946,7 @@ const passkeyRoutes = {
     }
     added.row.lastUsed = added.row.created;
     burnDeviceLink(db, link);
+    noteSignIn(user, added.row.lastUsed, false);
     saveDb();
     audit(req, recovery ? 'auth.recovery.ok' : 'auth.link.ok', { user, msg: [added.row.name, dropped && `replaced ${dropped.name || 'a passkey'}`].filter(Boolean).join(', ') || null });
     json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
@@ -2224,7 +2234,8 @@ const routes = {
         return json(res, 403, { error: 'invite code is no longer valid, ask for a new one', code: 'invite' });
       }
     }
-    const user = { id: c.uid, name: c.name, created: new Date().toISOString() };
+    const created = new Date().toISOString();
+    const user = { id: c.uid, name: c.name, created, lastSignInAt: created, signInCount: 1, signInTrackingSince: created };
     if (invite) { user.invitedBy = invite.code; invite.usedBy = user.id; invite.usedAt = user.created; }
     claimFirstAdmin(req, user);
     db.users.push(user);
@@ -2289,7 +2300,6 @@ const routes = {
     }
     cred.counter = verification.authenticationInfo.newCounter;
     cred.lastUsed = new Date().toISOString();
-    saveDb();
     const user = db.users.find(u => u.id === cred.userId);
     if (!user) {
       audit(req, 'auth.login.fail', { ok: false, uid: cred.userId, msg: 'user-missing' });
@@ -2299,6 +2309,7 @@ const routes = {
       audit(req, 'auth.login.fail', { ok: false, user, msg: 'account-disabled' });
       return json(res, 403, { error: 'this account has been disabled', code: 'disabled' });
     }
+    noteSignIn(user, cred.lastUsed);
     audit(req, 'auth.login.ok', { user });
     json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
   },
@@ -2700,12 +2711,24 @@ const routes = {
   // One row per user, cheap enough for a personal instance (reads each state file once).
   'GET /api/admin/users': async (req, res) => {
     if (!requireAdmin(req, res)) return;
+    // Older accounts predate the durable counters. Recover their latest known sign-in from the
+    // retained audit events, then the stored passkey usage as a final fallback.
+    const lastAuditedSignIn = new Map();
+    for (const event of auditKeep(auditLines())) {
+      if (!event.uid || !['auth.register.ok', 'auth.login.ok', 'auth.password.ok', 'auth.link.ok', 'auth.recovery.ok'].includes(event.ev)) continue;
+      const previous = lastAuditedSignIn.get(event.uid) || 0;
+      if (event.ts > previous) lastAuditedSignIn.set(event.uid, event.ts);
+    }
     const users = db.users.map(u => {
       const S = readState(u.id) || {};
       const workouts = records(S.workouts);
       const last = workouts[workouts.length - 1];
+      const lastPasskeyUse = db.creds.filter(c => c.userId === u.id).reduce((latest, c) => Math.max(latest, Date.parse(c.lastUsed || c.created || '') || 0), 0);
       return {
         id: u.id, name: u.name, created: u.created || null,
+        lastSignInAt: u.lastSignInAt || lastAuditedSignIn.get(u.id) || (lastPasskeyUse ? new Date(lastPasskeyUse).toISOString() : null),
+        signInCount: Number.isSafeInteger(u.signInCount) ? u.signInCount : null,
+        signInTrackingSince: u.signInTrackingSince || null,
         disabled: !!u.disabled, admin: isAdmin(u), owner: isOwner(u), invitedBy: u.invitedBy || null,
         workouts: workouts.length,
         lastWorkout: last ? last.d : null,

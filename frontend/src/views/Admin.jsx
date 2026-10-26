@@ -21,8 +21,9 @@ import '../admin.css'
 // code means.
 
 const rel = ts => {
-  if (!ts) return 'never'
-  const s = Math.max(0, (Date.now() - ts) / 1000)
+  const at = typeof ts === 'number' ? ts : Date.parse(ts || '')
+  if (!Number.isFinite(at) || at <= 0) return 'never'
+  const s = Math.max(0, (Date.now() - at) / 1000)
   if (s < 60) return 'just now'
   if (s < 3600) return Math.floor(s / 60) + ' min ago'
   if (s < 86400) return Math.floor(s / 3600) + ' h ago'
@@ -348,6 +349,7 @@ export default function Admin() {
   const liveUsers = (users || []).filter(u => u.live)
   const activeCount = (users || []).filter(u => u.lastSync && Date.now() - u.lastSync < 7 * 86400000).length
   const disabledCount = (users || []).filter(u => u.disabled).length
+  const newestFirst = (users || []).slice().sort((a, b) => (Date.parse(b.created || '') || 0) - (Date.parse(a.created || '') || 0))
 
   return <div className="narrow">
     <div className="hdr">
@@ -395,12 +397,18 @@ export default function Admin() {
       <h2 style={{ margin: 0 }}>Users</h2>
       <div className="adm-lead">Everyone with a profile on this instance. Tap one to see their activity, to disable the account (nothing is deleted) or to delete it with all their data for good.</div>
       <div className="list">
-        {(users || []).map(u => <div key={u.id} className="item" onClick={() => openUser(u.id)} style={u.disabled ? { opacity: .55 } : null}>
-          <div className="grow"><div className="tt">{u.live && <Icon name="dot" style={{ fontSize: 9, color: 'var(--green)', display: 'inline-block', marginInlineEnd: 5 }} />}{u.name} {u.admin && <span className="adm-pill acc" style={{ marginInlineStart: 4 }}>{u.owner ? 'owner' : 'admin'}</span>}{u.disabled && <span className="adm-pill bad" style={{ marginInlineStart: 4 }}>disabled</span>}</div>
-            <div className="ss">{u.live ? 'training now · ' + u.live.name : u.workouts + ' workouts' + (u.lastWorkout ? ' · last ' + fmtDate(u.lastWorkout) : '') + ' · last sync ' + rel(u.lastSync)}</div>
-            {u.email && <div className="ss" title="sign-in e-mail">{u.email}</div>}</div>
-          {u.hasPush && <Icon name="bell" title="push notifications on" style={{ fontSize: 15, color: 'var(--label-3)' }} />}<Icon name="chevronRight" className="chev" />
-        </div>)}
+        {newestFirst.map(u => {
+          const createdAt = Date.parse(u.created || '') || 0
+          const isNew = createdAt > 0 && Date.now() - createdAt < 7 * 86400000
+          return <div key={u.id} className="item" onClick={() => openUser(u.id)} style={u.disabled ? { opacity: .55 } : null}>
+            <div className="grow"><div className="tt">{u.live && <Icon name="dot" style={{ fontSize: 9, color: 'var(--green)', display: 'inline-block', marginInlineEnd: 5 }} />}{u.name} {isNew && <span className="adm-pill acc" style={{ marginInlineStart: 4 }}>new</span>} {u.admin && <span className="adm-pill acc" style={{ marginInlineStart: 4 }}>{u.owner ? 'owner' : 'admin'}</span>}{u.disabled && <span className="adm-pill bad" style={{ marginInlineStart: 4 }}>disabled</span>}</div>
+              <div className="ss">Joined {u.created ? fmtDate(u.created.slice(0, 10), false, true) : 'date unknown'} · last sign-in {u.lastSignInAt ? rel(u.lastSignInAt) : 'not recorded'}</div>
+              <div className="ss">{u.signInCount != null ? `${u.signInCount} sign-ins since ${u.signInTrackingSince ? fmtDate(u.signInTrackingSince.slice(0, 10), false, true) : 'tracking began'}` : 'Sign-in count starts with their next sign-in'}</div>
+              <div className="ss">{u.live ? 'training now · ' + u.live.name : u.workouts + ' workouts' + (u.lastWorkout ? ' · last ' + fmtDate(u.lastWorkout) : '') + ' · last sync ' + rel(u.lastSync)}</div>
+              {u.email && <div className="ss" title="sign-in e-mail">{u.email}</div>}</div>
+            {u.hasPush && <Icon name="bell" title="push notifications on" style={{ fontSize: 15, color: 'var(--label-3)' }} />}<Icon name="chevronRight" className="chev" />
+          </div>
+        })}
         {users && !users.length && <div className="adm-empty">No users yet.</div>}
       </div>
     </div>
