@@ -147,6 +147,10 @@ export default function Plan() {
      Coach surface uses, so an instance without the feature sees exactly the header it would have
      without it. */
   const showCoach = coachAvailable(config, user, { demo: DEMO, mobile: MOBILE, coachMode })
+  const showCoachSetup = !showCoach && !!user?.admin && !MOBILE && !DEMO
+  const openCoach = () => showCoach
+    ? nav('/coach')
+    : nav('/admin', { state: { section: 'coach' } })
 
   // Share, print, import and starter plans: one menu behind the header button, so the
   // two views below are only about the plan itself.
@@ -172,7 +176,7 @@ export default function Plan() {
       <SeasonDeco spot="header-bats" />
       <div><h1>{t('Plan')}</h1><div className="sub">{mode === 'rotation' ? t('Your routines in a loop') : t('Your weekly routine')}</div></div>
       <div className="hdr-actions">
-        {showCoach && <Button size="sm" variant="tinted" icon="sparkles" onClick={() => nav('/coach')}>{t('Coach')}</Button>}
+        {(showCoach || showCoachSetup) && <Button size="sm" variant="tinted" icon="sparkles" onClick={openCoach}>{showCoach ? t('AI Coach') : t('Set up AI Coach')}</Button>}
         <button className="iconbtn" onClick={openMenu} aria-label={t('Plan options')} title={t('Plan options')}><Icon name="share" /></button>
       </div>
     </div>
