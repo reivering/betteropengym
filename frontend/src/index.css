@@ -2425,6 +2425,9 @@ button.wl-summary{width:100%;padding:0 0 10px;text-align:start;border-radius:var
 .empty-health p{max-width:34ch;margin-bottom:7px}
 .health-footnote{padding:4px 6px 18px}
 .health-sheet{display:grid;gap:14px;padding:4px 2px 12px}
+.food-photo-card{display:grid;gap:10px;padding:12px;background:var(--surface);border-radius:var(--r-card)}
+.food-photo-preview{width:100%;max-height:220px;object-fit:cover;border-radius:var(--r-sm)}
+.food-photo-error{padding:10px 12px;border-radius:var(--r-sm);background:color-mix(in srgb,var(--red) 12%,var(--surface));color:var(--red);font-size:13px;line-height:1.45}
 .health-label{display:grid;gap:6px;min-width:0;color:var(--label-2);font-size:12px}
 .health-input{width:100%;min-height:42px;padding:9px 11px;border:1px solid var(--sep);border-radius:var(--r-sm);background:var(--bg-el);color:var(--label);font:inherit;font-size:15px}
 .health-input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}

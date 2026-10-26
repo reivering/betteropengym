@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { t } from '../lib/i18n.js'
@@ -7,17 +7,25 @@ import { HEALTH_DEFAULTS, makeFood, makeMeal, mealForDay, nutritionTotals } from
 import { Button } from '../components/ui.jsx'
 import Icon from '../components/Icon.jsx'
 import { confirmSheet } from '../sheets.jsx'
+import { ingestMediaFile } from '../lib/media-ingest.js'
+import { estimateFoodPhoto } from '../lib/coach-api.js'
 
 const CATEGORIES = ['Breakfast', 'Lunch', 'Dinner', 'Snack']
 const num = n => Math.round((Number(n) || 0) * 10) / 10
 
-function FoodSheet({ day, foods, onSave, close }) {
+function FoodSheet({ day, foods, onSave, close, aiReady }) {
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState('')
   const [grams, setGrams] = useState('100')
   const [category, setCategory] = useState('Breakfast')
   const [fresh, setFresh] = useState({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '' })
   const [creating, setCreating] = useState(false)
+  const [photoPreview, setPhotoPreview] = useState('')
+  const [photoBusy, setPhotoBusy] = useState(false)
+  const [photoError, setPhotoError] = useState('')
+  const [estimate, setEstimate] = useState(null)
+  const photoInput = useRef(null)
+  useEffect(() => () => { if (photoPreview) URL.revokeObjectURL(photoPreview) }, [photoPreview])
   const found = foods.filter(food => food.name.toLowerCase().includes(search.trim().toLowerCase())).slice(0, 12)
 
   const save = () => {
@@ -30,7 +38,39 @@ function FoodSheet({ day, foods, onSave, close }) {
     close()
   }
   const setField = (key, value) => setFresh(f => ({ ...f, [key]: value }))
+  const analyzePhoto = async file => {
+    if (!file) return
+    setPhotoError(''); setEstimate(null); setPhotoBusy(true)
+    let preview = ''
+    try {
+      const ingested = await ingestMediaFile(file)
+      if (ingested.media.kind !== 'image') throw new Error(t('Choose a still food photo.'))
+      const image = ingested.blobs.find(item => item.hash === ingested.media.hash)?.blob
+      if (!image) throw new Error(t('That photo could not be prepared.'))
+      preview = URL.createObjectURL(image)
+      setPhotoPreview(previous => { if (previous) URL.revokeObjectURL(previous); return preview })
+      const result = await estimateFoodPhoto(image)
+      const serving = Math.max(1, Number(result.servingGrams) || 100)
+      const per100 = key => num((Number(result[key]) || 0) * 100 / serving)
+      setFresh({ name: String(result.name || t('Meal estimate')).slice(0, 100), calories: per100('calories'), protein: per100('protein'), carbs: per100('carbs'), fat: per100('fat'), fiber: per100('fiber') })
+      setSearch(''); setSelectedId(''); setCreating(true); setGrams(String(serving))
+      setEstimate({ ...result, servingGrams: serving })
+    } catch (error) {
+      setPhotoError(error?.message || t('The food photo could not be analyzed.'))
+    } finally { setPhotoBusy(false) }
+  }
   return <div className="health-sheet">
+    <input ref={photoInput} hidden type="file" accept="image/*" capture="environment" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; analyzePhoto(file) }} />
+    <div className="food-photo-card">
+      <div className="muted small">{t('Take a clear photo of your meal and the AI Coach will estimate calories and nutrients.')}</div>
+      <Button icon="camera" disabled={!aiReady || photoBusy} onClick={() => photoInput.current?.click()}>{photoBusy ? t('Analyzing photo…') : t('Analyze food photo')}</Button>
+      {!aiReady && <div className="health-help">{t('Connect the server Codex Coach to use photo estimates.')}</div>}
+      {photoPreview && <img className="food-photo-preview" src={photoPreview} alt={t('Selected food photo')} />}
+      {photoBusy && <div className="muted small" role="status">{t('The photo is being sent to your server’s Codex AI for an estimate. It is not saved by FORM.')}</div>}
+      {photoError && <div className="food-photo-error" role="alert">{photoError}</div>}
+      {estimate && <div className="health-help">{t('AI estimate: {0} kcal for about {1} g. Check the food and amounts below, then save when they look right.', num(estimate.calories), estimate.servingGrams)}{estimate.confidence ? ` · ${t('Confidence')}: ${estimate.confidence}` : ''}{estimate.notes ? ` · ${estimate.notes}` : ''}</div>}
+      {!photoBusy && !photoError && !estimate && <div className="muted small">{t('Your photo is sent only when you choose Analyze. Nothing is logged until you review and save.')}</div>}
+    </div>
     <div className="muted small">Pick a saved food or enter a new food using values per 100 g.</div>
     <label className="health-label">Search saved foods<input className="health-input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search your foods" /></label>
     {found.length > 0 && <div className="food-options">{found.map(food => <button key={food.id} className={'food-option' + (selectedId === food.id ? ' selected' : '')} onClick={() => { setSelectedId(food.id); setCreating(false); setFresh({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '' }) }}><span><b>{food.name}</b><small>{food.nutrientsPer100g.calories} kcal · {food.nutrientsPer100g.protein} g protein per 100 g</small></span>{selectedId === food.id && <Icon name="check" />}</button>)}</div>}
@@ -61,6 +101,8 @@ function GoalsSheet({ goals, onSave, close }) {
 
 export default function Nutrition() {
   const S = useStore(s => s.S)
+  const user = useStore(s => s.user)
+  const config = useStore(s => s.config)
   const update = useStore(s => s.update)
   const openSheet = useUI(s => s.openSheet)
   const toast = useUI(s => s.toast)
@@ -71,7 +113,8 @@ export default function Nutrition() {
   const goals = nutrition.goals
   const byCategory = CATEGORIES.map(category => ({ category, meals: entries.filter(e => e.category === category) }))
   const showDate = value => new Date(value + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
-  const addFood = () => openSheet(close => <FoodSheet day={day} foods={nutrition.foods} close={close} onSave={(food, meal) => {
+  const aiReady = !!user && config?.coach?.enabled && config?.coach?.provider === 'codex'
+  const addFood = () => openSheet(close => <FoodSheet day={day} foods={nutrition.foods} aiReady={aiReady} close={close} onSave={(food, meal) => {
     update(s => {
       s.nutrition ||= structuredClone(HEALTH_DEFAULTS.nutrition)
       if (!s.nutrition.foods.some(f => f.name.toLowerCase() === food.name.toLowerCase())) s.nutrition.foods.push(food)

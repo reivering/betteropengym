@@ -129,6 +129,31 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
       } catch (e) { failEnqueue(res, e); }
     },
 
+    // A single compressed food photo. The image lives in memory only until the queued Codex
+    // request finishes; jobs.js writes it into a private temp dir and removes it afterwards.
+    'POST /api/coach/food': async (req, res) => {
+      const user = guard(req, res); if (!user) return;
+      const body = await readBody(req);
+      if (body.photoConsent !== true) return json(res, 400, { error: 'Confirm that this food photo may be sent to the configured AI provider.', code: 'photo-consent' });
+      if (cfgStore.load().provider !== 'codex') return json(res, 503, { error: 'Food photo estimates currently require Codex on this server.', code: 'unsupported' });
+      const data = typeof body.image === 'string' ? body.image : '';
+      const mime = typeof body.mime === 'string' ? body.mime : '';
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(mime) || !data || data.length > 2796204 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data)) {
+        return json(res, 400, { error: 'Choose a supported food photo under 2 MB.', code: 'invalid-image' });
+      }
+      const bytes = Buffer.from(data, 'base64');
+      const valid = bytes.length <= 2 * 1024 * 1024 && (mime === 'image/jpeg'
+        ? bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+        : mime === 'image/png'
+          ? bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+          : bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP');
+      if (!valid) return json(res, 400, { error: 'This photo could not be read. Choose another image.', code: 'invalid-image' });
+      try {
+        const job = jobs.enqueue(user.id, { kind: 'food', foodPhoto: { mime, data }, lang: body.lang });
+        json(res, 202, { job });
+      } catch (e) { failEnqueue(res, e); }
+    },
+
     /* How this profile sits against everyone else on the instance who opted in: medians only,
        at least three people, and nothing for a profile that does not share itself. */
     'GET /api/coach/cohort': async (req, res) => {

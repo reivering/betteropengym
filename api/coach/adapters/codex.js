@@ -15,9 +15,11 @@ const CLI = 'codex';
  * removes an input the job would otherwise inherit from the host, and dropping one would
  * change what a job can see without changing anything a test looks at.
  */
-export function argvFor(model) {
+export function argvFor(model, imagePath) {
   const argv = [
-    'exec', '-',              // non-interactive; '-' reads the prompt from stdin
+    'exec',
+    ...(imagePath ? ['--image', imagePath] : []), // an optional photo attached to this one request
+    '-',                       // non-interactive; '-' reads the prompt from stdin
     '--skip-git-repo-check',  // the job dir is a bare mkdtemp, not a repo -- without this it refuses to run
     '--ephemeral',            // do not write session files; the job dir dies with the job anyway
     '--ignore-user-config'    // $CODEX_HOME/config.toml would be an admin-invisible input to every job
@@ -39,8 +41,8 @@ export default {
     return { ok: true, version: (r.stdout || '').trim() };
   },
 
-  async invoke({ prompt, jobDir, env, model, timeoutMs }) {
-    const argv = argvFor(model);
+  async invoke({ prompt, jobDir, env, model, timeoutMs, imagePath }) {
+    const argv = argvFor(model, imagePath);
     // $CODEX_HOME itself is still set (config.jobEnv), because that is where the CLI keeps its
     // refreshable login cache and a job whose HOME is a temp dir would otherwise find no login
     // at all. --ignore-user-config narrows that to credentials only: the cache is read, the

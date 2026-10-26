@@ -24,7 +24,7 @@ const LINES = {
   profile: () => t('Your answers to the Coach: goal, days, equipment, limits and injuries'),
   prefs: () => t('Your unit and language')
 }
-export const sharedLines = () => [...DATA_CATEGORIES.map(k => LINES[k]?.()).filter(Boolean), t('Anything you type to the Coach')]
+export const sharedLines = () => [...DATA_CATEGORIES.map(k => LINES[k]?.()).filter(Boolean), t('Anything you type to the Coach'), t('A food photo you choose to analyze, sent for a one-time estimate and not kept by your server')]
 
 /** Resolves true for "Allow", false for "Not now" and for a sheet closed any other way. */
 export function askAiConsent(target) {

@@ -87,6 +87,7 @@ export default function CoachChat() {
     const endedUnseen = !was && !!mine && last?.id === mine
     if (!was && !endedUnseen) return
     settleAwaited(was ? was.id : mine)
+    if (was?.kind === 'food' || (endedUnseen && last?.kind === 'food')) return
     const ms = was?.startedAt ? Date.now() - was.startedAt : 0
     update(s => {
       // A run that ended unseen has no duration worth learning from.

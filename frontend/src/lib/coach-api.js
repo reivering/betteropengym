@@ -95,6 +95,43 @@ export const requestDebrief = (...a) => asked(_requestDebrief)(...a).then(track)
 // (lib/coach-context.js): the server never holds it.
 const _askCoach = async text => DEMO ? (await demo()).demoAsk(S(), text) : LOCAL() ? (await local()).localAsk(S(), text, todayForCoach(S())) : api('/api/coach/ask', { method: 'POST', body: JSON.stringify({ text, today: todayForCoach(S()), lang: getLang() }) })
 export const askCoach = (...a) => asked(_askCoach)(...a).then(track)
+
+/** Send one on-device-compressed food photo to the server's Codex Coach, then wait for its
+ *  estimate. The server keeps the image only in memory and in a private temp file for the call. */
+export async function estimateFoodPhoto(blob) {
+  if (DEMO || LOCAL()) throw new Error(t('Food photo estimates need the Codex Coach connected on your server.'))
+  if (!blob || !['image/jpeg', 'image/png', 'image/webp'].includes(blob.type) || blob.size > 2 * 1024 * 1024) {
+    throw new Error(t('Choose a supported photo under 2 MB.'))
+  }
+  await ensureAiConsent()
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  let binary = ''
+  for (let start = 0; start < bytes.length; start += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(start, Math.min(start + 0x8000, bytes.length)))
+  }
+  const { job } = await api('/api/coach/food', {
+    method: 'POST',
+    body: JSON.stringify({ image: btoa(binary), mime: blob.type, photoConsent: true, lang: getLang() })
+  })
+  if (!job?.id) throw new Error(t('The server did not start the food estimate.'))
+
+  const until = Date.now() + 6 * 60 * 1000
+  while (Date.now() < until) {
+    const status = await api('/api/coach/status')
+    if (status.last?.id === job.id && status.last.kind === 'food') {
+      if (status.last.outcome === 'failed') throw new Error(jobErrorText(status.last.errorClass || 'internal'))
+      if (status.last.outcome !== 'nochange') throw new Error(t('The food estimate could not be completed.'))
+      let result
+      try { result = JSON.parse(status.last.reading || '{}') } catch { result = null }
+      if (!result || typeof result !== 'object') throw new Error(t('The food estimate could not be read.'))
+      if (result.notFood) throw new Error(t('I could not identify food in that photo. Try a clear picture of the meal.'))
+      return result
+    }
+    await new Promise(resolve => setTimeout(resolve, 1800))
+  }
+  throw new Error(t('The food estimate took too long. Try again.'))
+}
+
 // An automatic review, if one is due (lib/coach-schedule.js asks while the app is open). Only a
 // phone with its own key runs them here; a server runs its own on its tick. The data-sharing
 // question was asked when they were switched on, and nobody is there to ask it now: a "yes"
