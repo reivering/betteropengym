@@ -390,11 +390,13 @@ export function defaultTrainingDays(count) {
 /** The questionnaire, as the lines the chat shows back to the user. */
 export function profileLines(p) {
   if (!p) return []
-  const goal = { strength: 'Get stronger', muscle: 'Build muscle', general: 'General fitness', fatloss: 'Lose fat', endurance: 'Endurance' }[p.goal]
+  const goal = { strength: 'Get stronger', muscle: 'Build muscle', general: 'General fitness', fatloss: 'Weight loss', endurance: 'Endurance' }[p.goal]
   const exp = { new: 'New to lifting', returning: 'Coming back after a break', regular: 'Training regularly' }[p.experience]
+  const gym = { commercial: 'Commercial gym', condo: 'Condo gym', home: 'Home gym', mixed: 'It varies' }[p.gymType]
   const lines = []
   if (goal) lines.push(t(goal))
   if (exp) lines.push(t(exp))
+  if (gym) lines.push(t(gym))
   if (p.daysPerWeek) lines.push(tn('1 day a week', '{0} days a week', p.daysPerWeek))
   if (p.sessionMin) lines.push(t('{0} min per session', p.sessionMin))
   if (p.equipment?.length) lines.push(p.equipment.join(', '))

@@ -6,6 +6,7 @@ Design a complete plan from `coachProfile` (their intake answers) and, if presen
 
 - Schedule exactly `coachProfile.daysPerWeek` training days. `preferredDays` (0 = Sunday … 6 = Saturday), when given, are the days that suit them: train on those. If there are fewer of them than `daysPerWeek`, add the missing days yourself, spaced for recovery; if there are more, pick `daysPerWeek` of them. The count always wins.
 - Fit `coachProfile.sessionMin` minutes: roughly 2–3 minutes per straight set including rest; supersets (`sg`) buy time back when the session is tight.
+- Consider `coachProfile.gymType` (commercial, condo, home, or mixed) as context, but only prescribe equipment explicitly listed in `coachProfile.equipment`. A gym label is not proof that a particular machine is available.
 - Only exercises from `library`. Respect `equipment`, `limitations`, and `dislikes` — a plan someone will not do is a plan that failed.
 - If `history.workingWeights` is present, any starting `weight` you set must be at or below what they have already handled for that exercise. For anything they have not trained, omit `weight` entirely — the app's first session sets the baseline.
 - 1–7 routines, each 3–12 exercises, compound work before accessories.

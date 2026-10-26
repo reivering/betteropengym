@@ -43,6 +43,12 @@ const EXPERIENCE = [
   ['returning', () => [t('Coming back after a break'), t('You know the movements; the numbers need rebuilding.')], 'reset'],
   ['regular', () => [t('Training regularly'), t('Consistent for a while now.')], 'trophy']
 ]
+const GYM_TYPES = [
+  ['commercial', () => t('Commercial gym'), 'machine'],
+  ['condo', () => t('Condo gym'), 'house'],
+  ['home', () => t('Home gym'), 'house'],
+  ['mixed', () => t('It varies'), 'globe']
+]
 
 // Equipment options come from the library's own taxonomy, most common first, so every choice
 // on screen has exercises behind it.
@@ -78,7 +84,7 @@ export default function CoachIntake() {
   const [p, setP] = useState(() => ({
     goal: null, experience: null, daysPerWeek: 3, preferredDays: defaultTrainingDays(3),
     // A home gym already set up under Settings → Equipment is the best first guess here.
-    sessionMin: 60, equipment: (activeProfile(S)?.equipment || []).filter(e => EQUIPMENT.includes(e)), limitations: '', likes: '', dislikes: '', notes: '',
+    sessionMin: 60, gymType: null, equipment: (activeProfile(S)?.equipment || []).filter(e => EQUIPMENT.includes(e)), limitations: '', likes: '', dislikes: '', notes: '',
     ...(S.coach?.profile || {})
   }))
   const set = patch => setP(v => ({ ...v, ...patch }))
@@ -93,6 +99,12 @@ export default function CoachIntake() {
   const optional = ['equipment', 'limits', 'extras'].includes(key)
 
   const next = () => (last ? finish() : setStep(step + 1))
+  const skip = () => {
+    // Empty equipment used to mean the Coach could choose from every machine in the catalogue.
+    // If someone skips this answer, a body-weight-only plan is the safe interpretation.
+    if (key === 'equipment' && !p.equipment.length) set({ equipment: ['body weight'] })
+    setStep(step + 1)
+  }
   const back = () => (step ? setStep(step - 1) : nav(editing ? '/coach' : '/plan'))
 
   const agree = info => {
@@ -110,7 +122,12 @@ export default function CoachIntake() {
   const finish = async () => {
     // `??`, not `||`: only a missing answer takes the default. Nought is an answer, and the clamp
     // turns it into one day like every other count below the floor.
-    const profile = { ...p, daysPerWeek: Math.min(7, Math.max(1, p.daysPerWeek ?? 3)) }
+    const profile = {
+      ...p,
+      // Never interpret a blank equipment list as permission to invent a gym setup.
+      equipment: p.equipment.length ? p.equipment : ['body weight'],
+      daysPerWeek: Math.min(7, Math.max(1, p.daysPerWeek ?? 3)),
+    }
     update(s => {
       const c = (s.coach = s.coach || emptyCoach())
       c.profile = profile
@@ -157,7 +174,7 @@ export default function CoachIntake() {
       {key !== 'consent' && <div className="ob-dots">
         {dots.map((s, i) => <span key={s} className={'ob-dot' + (i === dotIndex ? ' on' : i < dotIndex ? ' done' : '')} />)}
       </div>}
-      {optional && !last ? <button className="ob-skip" onClick={next}>{t('Skip')}</button> : <span style={{ width: 36 }} />}
+      {optional && !last ? <button className="ob-skip" onClick={skip}>{t(key === 'equipment' && !p.equipment.length ? 'Body weight only' : 'Skip')}</button> : <span style={{ width: 36 }} />}
     </div>
 
     <div className="ob-body">
@@ -217,7 +234,15 @@ export default function CoachIntake() {
       {key === 'equipment' && <>
         <div className="ob-eyebrow">{t('Equipment')}</div>
         <h1 className="ob-h">{t('What can you train with?')}</h1>
-        <p className="ob-p">{t('Pick everything you have access to. Leave it empty and the Coach will use the whole library.')}</p>
+        <p className="ob-p">{t('Choose your gym type, then select the equipment you can actually use.')}</p>
+        <div className="ob-sub ob-sub-first">{t('Where do you train most often?')}</div>
+        <div className="ob-gym-types">
+          {GYM_TYPES.map(([v, title, icon]) => <button key={v} type="button" className={'chip ob-gym-type' + (p.gymType === v ? ' on' : '')} aria-pressed={p.gymType === v} onClick={() => set({ gymType: v })}>
+            <Icon name={icon} />{title()}
+          </button>)}
+        </div>
+        <div className="ob-sub ob-sub-first">{t('Equipment you have access to')}</div>
+        <p className="ob-p ob-eq-help">{t('Pick what is available there. If you skip, the Coach will make a body-weight-only plan.')}</p>
         <div className="ob-chips">
           {EQUIPMENT.map(e => <button key={e} className={'chip' + (p.equipment.includes(e) ? ' on' : '')} onClick={() => toggleEq(e)}>{t(e)}</button>)}
         </div>

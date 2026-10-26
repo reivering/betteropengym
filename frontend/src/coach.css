@@ -48,6 +48,11 @@
 .ob-group .ob-days,.ob-group .ob-week{margin:0}
 .ob-group .ob-day:not(.on),.ob-group .ob-wd:not(.on){background:var(--surface-2)}
 .ob-quick{display:flex;gap:7px;justify-content:center;flex-wrap:wrap;margin-top:12px}
+.ob-gym-types{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0 18px}
+.ob-gym-type{display:flex;align-items:center;justify-content:flex-start;gap:8px;min-height:44px;padding:9px 11px;border:1.5px solid transparent}
+.ob-gym-type .icn{font-size:17px;color:var(--acc);flex:none}
+.ob-gym-type.on{background:var(--acc-soft);color:var(--acc);border-color:var(--acc)}
+.ob-p.ob-eq-help{margin:-6px 0 12px;font-size:14px}
 .ob-chips{display:flex;flex-wrap:wrap;gap:8px}
 .ob-chips .chip{padding:10px 16px;font-size:15px;border:1.5px solid transparent}
 .ob-chips .chip.on{background:var(--acc-soft);color:var(--acc);border-color:var(--acc)}

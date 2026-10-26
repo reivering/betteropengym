@@ -46,6 +46,7 @@ export const MAX_PAYLOAD_CHARS = 300_000;
    reads this text as data rather than instruction (common rule 3); the bound is about size.
    A field of the wrong type reads as absent rather than as "[object Object]". */
 export const PROFILE_TEXT_MAX = { limitations: 600, likes: 300, dislikes: 300, notes: 600 };
+const GYM_TYPES = new Set(['commercial', 'condo', 'home', 'mixed']);
 // Goal and experience are enum words today (strength, returning, ...); 40 leaves room for new
 // ones without letting either carry a paragraph.
 export const PROFILE_WORD_MAX = 40;
@@ -101,6 +102,7 @@ function cleanProfile(profile) {
   return {
     goal: word(profile.goal, PROFILE_WORD_MAX),
     experience: word(profile.experience, PROFILE_WORD_MAX),
+    gymType: GYM_TYPES.has(profile.gymType) ? profile.gymType : null,
     daysPerWeek: count(profile.daysPerWeek, 1, 7),
     // Weekdays 0-6, each once: seven entries is the whole week, so anything past that is noise.
     preferredDays: [...new Set(days.map(weekday).filter(d => Number.isInteger(d) && d >= 0 && d <= 6))],

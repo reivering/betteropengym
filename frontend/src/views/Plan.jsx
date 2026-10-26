@@ -21,8 +21,8 @@ import { glyphOf, DEFAULT_GLYPH } from '../lib/glyphs.js'
 import { DEMO } from '../lib/demo.js'
 import { EXDB } from '../lib/exercises.js'
 import { MOBILE } from '../lib/mobile.js'
-import { coachAvailable, hasConsent, applyCreatedPlan, appendChat, recordDismissal } from '../lib/coach.js'
-import { requestPlan, useCoachStatus, resolvePending, JOB_ERRORS } from '../lib/coach-api.js'
+import { coachAvailable, applyCreatedPlan, appendChat, recordDismissal } from '../lib/coach.js'
+import { useCoachStatus, resolvePending } from '../lib/coach-api.js'
 import { queueOf, queueView } from '../lib/queue.js'
 import { deriveSessionName } from '../lib/session-merge.js'
 import { markUndone, undoMarks } from '../lib/sync-merge.js'
@@ -138,8 +138,6 @@ export default function Plan() {
   const coachMode = useStore(s => s.coachLocal?.mode)
   const user = useStore(s => s.user)
   const toast = useUI(s => s.toast)
-  const [building, setBuilding] = useState(false)
-  const [coachError, setCoachError] = useState('')
   const fileRef = useRef(null)
   const [view, setViewState] = useState(readView)
   const setView = v => {
@@ -160,12 +158,11 @@ export default function Plan() {
     else if (user.admin) nav('/admin', { state: { section: 'coach' } })
     else toast(t('The AI Coach is not enabled on this server yet. Ask your admin to turn it on.'))
   }
-  const buildWithCoach = async () => {
+  const buildWithCoach = () => {
     if (!showCoach) { openCoach(); return }
-    if (!S.coach?.profile || !hasConsent(S)) { nav('/coach/intake?return=plan'); return }
-    setBuilding(true); setCoachError('')
-    try { await requestPlan(S.coach.profile); setBuilding(false); await refresh() }
-    catch (e) { setCoachError(JOB_ERRORS[e.data?.code] || e.message || t('Could not ask the Coach')); setBuilding(false) }
+    // Revisit the questions for every new plan so the Coach uses current goals and gym details,
+    // not a stale profile from the last time this person asked.
+    nav('/coach/intake?return=plan')
   }
   const acceptCoachPlan = schedule => {
     try {
@@ -222,10 +219,9 @@ export default function Plan() {
     {showCoach && <section className="coach-plan-builder" aria-label={t('AI workout plan')}>
       {!pending?.kind || pending.kind !== 'create' ? <>
         <div><strong>{t('Build a gym plan with AI')}</strong><p>{t('Get a complete set of routines tailored to your goal, schedule and equipment. Review it here before adding it.')}</p></div>
-        <Button variant="tinted" icon="sparkles" disabled={building || !!job} onClick={buildWithCoach}>
-          {building || job?.kind === 'create' ? t('Building your plan…') : t('Build my plan')}
+        <Button variant="tinted" icon="sparkles" disabled={!!job} onClick={buildWithCoach}>
+          {job?.kind === 'create' ? t('Building your plan…') : t('Build my plan')}
         </Button>
-        {coachError && <p className="coach-plan-error" role="alert">{coachError}</p>}
       </> : <CoachPlanReview proposal={pending} onAccept={acceptCoachPlan} onDismiss={dismissCoachPlan} />}
     </section>}
     {view === 'routines'
