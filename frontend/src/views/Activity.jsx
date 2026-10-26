@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { todayISO, isoOf, uid } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
 import { activityTotal, makeManualActivity, preferredRecords } from '../lib/health.js'
-import { listenForSteps, motionCounterDeviceId } from '../lib/motion-pedometer.js'
 import { Button } from '../components/ui.jsx'
 import Icon from '../components/Icon.jsx'
 import { confirmSheet } from '../sheets.jsx'
@@ -33,17 +32,9 @@ export default function Activity() {
   const openSheet = useUI(s => s.openSheet)
   const toast = useUI(s => s.toast)
   const [day, setDay] = useState(todayISO())
-  const [tracking, setTracking] = useState(false)
-  const [sessionSteps, setSessionSteps] = useState(0)
-  const [motionError, setMotionError] = useState('')
-  const sessionRef = useRef(null)
-  const stopSensorRef = useRef(null)
   const activity = S.activity || { stepGoal: 8000, records: [] }
   const records = activity.records || []
   const steps = activityTotal(records, 'steps', day)
-  const shownSteps = day === todayISO() && tracking && sessionRef.current
-    ? sessionRef.current.base + sessionSteps
-    : steps
   const energy = activityTotal(records, 'active_energy', day)
   const selectedStepRecords = preferredRecords(records, 'steps', day)
   const selectedEnergyRecords = preferredRecords(records, 'active_energy', day)
@@ -66,52 +57,6 @@ export default function Activity() {
       s.activity.records.push(record)
     }
   })
-  const persistMotion = useCallback(() => {
-    const session = sessionRef.current
-    if (!session || !session.count) return
-    const externalRecordId = `browser-motion:${session.deviceId}:${session.day}`
-    useStore.getState().update(s => {
-      s.activity ||= { stepGoal: 8000, records: [] }
-      const old = s.activity.records.find(r => r.externalRecordId === externalRecordId)
-      const record = {
-        id: old?.id || uid(), userId: session.userId, provider: 'browser_motion', deviceId: session.deviceId,
-        startAt: new Date(`${session.day}T00:00:00`).toISOString(), endAt: new Date().toISOString(), day: session.day,
-        metric: 'steps', value: session.base + session.count, unit: 'count', externalRecordId, syncedAt: new Date().toISOString()
-      }
-      s.activity.records = s.activity.records.filter(r => r.externalRecordId !== externalRecordId)
-      s.activity.records.push(record)
-    })
-  }, [])
-  const stopTracking = useCallback(() => {
-    stopSensorRef.current?.()
-    stopSensorRef.current = null
-    persistMotion()
-    sessionRef.current = null
-    setTracking(false)
-    setSessionSteps(0)
-  }, [persistMotion])
-  useEffect(() => () => {
-    stopSensorRef.current?.()
-    persistMotion()
-  }, [persistMotion])
-  const startTracking = async () => {
-    setMotionError('')
-    const session = { day, base: steps, count: 0, deviceId: motionCounterDeviceId(), userId: user?.id || null }
-    sessionRef.current = session
-    try {
-      stopSensorRef.current = await listenForSteps(() => {
-        const active = sessionRef.current
-        if (!active) return
-        active.count += 1
-        setSessionSteps(active.count)
-        if (active.count % 10 === 0) persistMotion()
-      })
-      setTracking(true)
-    } catch (error) {
-      sessionRef.current = null
-      setMotionError(error.message || 'Could not access this phone’s motion sensor.')
-    }
-  }
   const add = () => openSheet(close => <EntrySheet goal={activity.stepGoal} close={close} onSave={values => { writeActivity(values); toast('Activity saved') }} />)
   const editGoal = () => openSheet(close => <GoalSheet value={activity.stepGoal || 8000} close={close} onSave={value => update(s => { s.activity ||= { records: [] }; s.activity.stepGoal = value })} />)
   const previous = () => setDay(d => { const date = new Date(d + 'T12:00:00'); date.setDate(date.getDate() - 1); return isoOf(date) })
@@ -122,20 +67,15 @@ export default function Activity() {
     <header className="hdr health-header"><div><div className="kicker">{t('EVERYDAY MOVEMENT')}</div><h1>Activity</h1><div className="sub">{new Date(day + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</div></div><button className="iconbtn" onClick={editGoal} aria-label="Edit step goal"><Icon name="target" /></button></header>
     <section className="health-overview activity-overview">
       <div className="health-date-row"><button className="iconbtn" onClick={previous} aria-label="Previous day"><Icon name="chevronLeft" /></button><span>{day === todayISO() ? 'Today' : day}</span><button className="iconbtn" onClick={next} disabled={day >= todayISO()} aria-label="Next day"><Icon name="chevronRight" /></button></div>
-      <div className="step-readout"><div><span className="muted small">Steps</span><b>{shownSteps.toLocaleString()}</b></div><span className="health-target">of {(activity.stepGoal || 8000).toLocaleString()}</span></div>
-      <div className="health-progress"><i style={{ '--health-progress': Math.min(1, shownSteps / (activity.stepGoal || 8000)) }} /></div>
-      <div className="health-note"><span>{Math.round(shownSteps / (activity.stepGoal || 8000) * 100)}% of daily goal</span><Button size="sm" variant="plain" onClick={editGoal}>Change goal</Button></div>
-      {day === todayISO() && <Button variant={tracking ? 'plain' : 'primary'} icon={tracking ? 'check' : 'walk'} onClick={tracking ? stopTracking : startTracking}>
-        {tracking ? `Stop counting · +${sessionSteps.toLocaleString()}` : 'Start step counter'}
-      </Button>}
-      {tracking && <div className="health-help">Counting from this phone’s motion sensor. Keep this page open in the foreground while you walk.</div>}
-      {motionError && <div className="health-help" role="status">{motionError}</div>}
+      <div className="step-readout"><div><span className="muted small">Steps</span><b>{steps.toLocaleString()}</b></div><span className="health-target">of {(activity.stepGoal || 8000).toLocaleString()}</span></div>
+      <div className="health-progress"><i style={{ '--health-progress': Math.min(1, steps / (activity.stepGoal || 8000)) }} /></div>
+      <div className="health-note"><span>{Math.round(steps / (activity.stepGoal || 8000) * 100)}% of daily goal</span><Button size="sm" variant="plain" onClick={editGoal}>Change goal</Button></div>
       <Button variant="plain" icon="plus" onClick={add}>Log activity</Button>
     </section>
     <section className="health-overview week-activity">
       <div className="health-toolbar"><h2>Steps · last 7 days</h2></div>
       <div className="step-week-chart">{lastSeven.map(item => <div className="step-day" key={item.day}><span>{item.count ? item.count.toLocaleString() : '–'}</span><div className="step-bar"><i style={{ height: Math.max(2, item.count / maxSteps * 100) + '%' }} /></div><small>{item.label}</small></div>)}</div>
-      <div className="health-footnote">Source-aware totals use one provider per date to avoid double-counting overlapping device totals. The live counter estimates steps only while this page is open; Health Connect or Apple Health remains more reliable for all-day totals.</div>
+      <div className="health-footnote">Source-aware totals use one provider per date to avoid double-counting overlapping device totals. Connect Health Connect or Apple Health for automatic all-day step totals, or log a manual total.</div>
     </section>
     <section className="health-overview energy-overview">
       <div className="health-toolbar"><h2>Energy from activity</h2></div>
