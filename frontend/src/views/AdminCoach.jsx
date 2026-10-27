@@ -112,7 +112,6 @@ export default function AdminCoach() {
     catch (e) { toast(e.message) }
     setBusy(false)
   }
-
   if (!d) return <div className="card"><div className="muted small">Loading Coach status…</div></div>
 
   if (d.disabledByEnv) return <div className="card">
@@ -239,9 +238,13 @@ export default function AdminCoach() {
           <div className="adm-hint">{d.auth.type === 'chatgpt-cli'
             ? <>Signed in via the Codex CLI{d.auth.connectedAt ? ' · last refreshed ' + rel(d.auth.connectedAt) : ''}. Its login cache stays in <code>./coach-auth</code> on this server.</>
             : <>Connected{d.auth.account ? ' as ' + d.auth.account : ''} via {credentialLabel(d.auth.type)}{d.auth.connectedAt ? ' · added ' + rel(d.auth.connectedAt) : ''}. The key is stored encrypted and is never shown again.</>}</div>
+          {d.authMode === 'instance' && ['cli-token', 'oauth', 'chatgpt-cli'].includes(d.auth.type) && meta.apiKey && <div className="adm-hint" style={{ marginTop: 8 }}>
+            This personal login is the Coach provider for this instance. Under Admin → Users, open a profile and turn on AI Coach access for each person you want to authorize. Each person must still approve sharing their training data.
+          </div>}
           <div className="adm-actions">
             {meta.apiKey && <Button size="sm" variant="tinted" icon="lock" disabled={busy}
-              onClick={() => openSheet(close => <ApiKeySheet close={close} onDone={load} label={meta.label} placeholder={meta.keyPlaceholder} optional={meta.keyOptional} />)}>Replace key</Button>}
+              onClick={() => openSheet(close => <ApiKeySheet close={close} onDone={load} label={meta.label} placeholder={meta.keyPlaceholder} optional={meta.keyOptional} shared={meta.deviceLogin} />)}>
+              {['cli-token', 'oauth', 'chatgpt-cli'].includes(d.auth.type) ? 'Use shared API key' : 'Replace key'}</Button>}
             {/* The key is encrypted at rest and never shown again, so this is the one action on the
                 card that cannot be walked back. Every other irreversible action in the app asks first;
                 until 2026-09-22 this one did not. */}
@@ -259,7 +262,7 @@ export default function AdminCoach() {
           </div>}
           {authState === 'optional' && <div className="adm-hint">This endpoint works without a key. Add one only if your server asks for it (OpenRouter does; a model on your own network usually does not).</div>}
           {authState === 'none' && <div className="adm-hint">{meta.deviceLogin
-            ? <>After building the <code>coach</code> image, run these on the server. The first command prepares the mounted sign-in folder; the second starts device sign-in:<br /><code>docker compose exec -u root api sh -lc 'chown coach:coach /coach-auth && chmod 700 /coach-auth'</code><br /><code>docker compose exec -it --user coach api sh -lc 'CODEX_HOME=/coach-auth codex login --device-auth'</code><br />Complete the device sign-in in a browser, then refresh this card. The session is kept in <code>./coach-auth</code>.</>
+            ? <>After building the <code>coach</code> image, run these on the server. The first command prepares the mounted sign-in folder; the second starts device sign-in:<br /><code>docker compose exec -u root api sh -lc 'chown coach:coach /coach-auth && chmod 700 /coach-auth'</code><br /><code>docker compose exec -it --user coach api sh -lc 'CODEX_HOME=/coach-auth codex login --device-auth'</code><br />Complete the device sign-in in a browser, then refresh this card. The session is kept in <code>./coach-auth</code>. Then enable Coach access for each authorized profile under Admin → Users.</>
             : meta.setupToken
               ? 'Paste either a Claude Code setup token (your subscription) or an Anthropic API key (pay per use).'
               : 'Paste an API key from the provider\'s console. It is stored encrypted on this server and sent to the provider only while a job runs.'}</div>}
@@ -270,8 +273,8 @@ export default function AdminCoach() {
             {meta.setupToken && <Button size="sm" variant="primary" icon="key" disabled={busy}
               onClick={() => openSheet(close => <SetupTokenSheet close={close} onDone={load} label={meta.label} />)}>Add Claude Code token</Button>}
             {meta.apiKey && <Button size="sm" variant={meta.setupToken ? undefined : 'primary'} icon="lock" disabled={busy}
-              onClick={() => openSheet(close => <ApiKeySheet close={close} onDone={load} label={meta.label} placeholder={meta.keyPlaceholder} optional={meta.keyOptional} />)}>
-              {meta.keyOptional ? 'Add API key (optional)' : 'Add API key'}</Button>}
+              onClick={() => openSheet(close => <ApiKeySheet close={close} onDone={load} label={meta.label} placeholder={meta.keyPlaceholder} optional={meta.keyOptional} shared={meta.deviceLogin} />)}>
+              {meta.deviceLogin ? 'Add shared API key' : meta.keyOptional ? 'Add API key (optional)' : 'Add API key'}</Button>}
           </div>
         </>}
       </Step>}
@@ -353,8 +356,8 @@ export default function AdminCoach() {
             : d.auth?.type === 'apikey' || meta.http
               ? 'One API key for the whole instance: every profile may use the Coach with it, and the daily limits above are what bound the spend.'
               : d.boundUid
-                ? 'One personal account, already in use by one profile. Every other profile is refused, so nobody spends somebody else\'s subscription.'
-                : 'One personal account. The first profile to use it becomes the only one allowed to; every other profile is then refused. Paste an API key instead if the whole instance should have the Coach.'}</div>
+                ? 'This personal login is available to its linked profile and any profiles you explicitly enable under Users. Each person still approves their own training data before the Coach sends it.'
+                : 'This personal login starts with no enabled profiles. Open each account under Users and turn on AI Coach access for the people you authorize.'}</div>
 
           <div className="adm-group-t" style={{ marginTop: 14 }}>Isolation</div>
           <div className="adm-hint">{d.unprivileged && !d.unprivileged.ok
@@ -482,7 +485,7 @@ function SetupTokenSheet({ close, onDone, label }) {
   </>
 }
 
-function ApiKeySheet({ close, onDone, label, placeholder, optional }) {
+function ApiKeySheet({ close, onDone, label, placeholder, optional, shared }) {
   const toast = useUI(s => s.toast)
   const [key, setKey] = useState('')
   const [busy, setBusy] = useState(false)
@@ -497,6 +500,7 @@ function ApiKeySheet({ close, onDone, label, placeholder, optional }) {
   return <>
     <h3>{label} API key</h3>
     <div className="muted small" style={{ lineHeight: 1.5, marginBottom: 12 }}>
+      {shared && <>This replaces the personal Codex login for Coach requests and lets every profile use the Coach. The provider bills API usage separately from a ChatGPT subscription. </>}
       Stored encrypted on this server and sent to the provider only while a job runs. It is never shown again and never leaves the server{optional ? '. For an endpoint that takes no key, you can leave this empty and close the sheet.' : '.'}
     </div>
     <TextField value={key} autoFocus type="password" placeholder={placeholder || 'sk-…'} autoCapitalize="none" autoCorrect="off" onChange={e => setKey(e.target.value)} />

@@ -97,6 +97,7 @@ const DEFAULTS = {
   models: {},                                        // { [provider]: model id }
   providerOptions: {},                               // { [provider]: { baseUrl } }
   boundUid: {},                                      // instance mode: { [provider]: the profile its credential bound to }
+  userAccess: {},                                    // explicit per-profile Coach access: { [uid]: boolean }
   caps: { perProfileDaily: 10, instanceDaily: 0 },   // 0 = unlimited
   daily: null,                                       // { date, count }: jobs enqueued today across every profile
   // Anonymous medians across profiles that opt in ("compare with others"). Off by default: it
@@ -182,6 +183,9 @@ export function load() {
     for (const p of Object.keys(src)) if (Object.prototype.hasOwnProperty.call(PROVIDERS, p)) clean[p] = src[p];
     cache[k] = clean;
   }
+  cache.userAccess = isPlainObj(cache.userAccess)
+    ? Object.fromEntries(Object.entries(cache.userAccess).filter(([uid, allowed]) => uidSafe(uid) && typeof allowed === 'boolean'))
+    : {};
   // A retired provider must not leave the admin page with no chip selected.
   if (!PROVIDERS[cache.provider]) cache.provider = DEFAULTS.provider;
   if (cache.authMode !== 'profile') cache.authMode = 'instance';
@@ -202,6 +206,28 @@ export const authFor = (cfg = load(), p = cfg.provider) => (cfg.auth && cfg.auth
 export const modelFor = (cfg = load(), p = cfg.provider) => (cfg.models && cfg.models[p]) || (PROVIDERS[p] && PROVIDERS[p].defaultModel) || null;
 export const optionsFor = (cfg = load(), p = cfg.provider) => (cfg.providerOptions && cfg.providerOptions[p]) || {};
 export const boundUidFor = (cfg = load(), p = cfg.provider) => (cfg.boundUid && cfg.boundUid[p]) || null;
+export function userCoachEnabled(uid, cfg = load()) {
+  if (!uidSafe(uid)) return false;
+  if (Object.prototype.hasOwnProperty.call(cfg.userAccess || {}, uid)) return cfg.userAccess[uid] === true;
+  const rec = authFor(cfg);
+  const personal = (rec?.data && isPersonalCredential(rec.type))
+    || (cfg.provider === 'codex' && !rec && codexLoginStatus().connected);
+  const bound = boundUidFor(cfg);
+  // Preserve the existing single-profile default for personal logins. Admins explicitly
+  // enable each additional profile from Users; API-key and local-endpoint setups keep their
+  // existing availability unless an admin explicitly switches a profile off.
+  return !personal || bound === uid;
+}
+export function setUserCoachEnabled(uid, enabled) {
+  if (!uidSafe(uid)) throw new Error('bad profile id');
+  const userAccess = { ...(load().userAccess || {}), [uid]: !!enabled };
+  return save({ userAccess });
+}
+export function clearUserCoachAccess(uid) {
+  const userAccess = { ...(load().userAccess || {}) };
+  delete userAccess[uid];
+  return save({ userAccess });
+}
 export function saveAuth(provider, auth) {
   const cfg = load();
   const next = { ...cfg.auth };
@@ -245,15 +271,14 @@ export function clearProfileAuth(uid) {
 /* ---------- which credential pays for this job ---------- */
 
 export const SHARED_ACCOUNT_REFUSAL =
-  'This instance is configured with a single shared account. Ask your admin to enable per-profile sign-in.';
+  'This Coach login is linked to another profile. Ask an admin to enable Coach access for your profile in Users.';
 
 /**
  * Resolve the credential for one profile, or say why there isn't one. Never throws and never
  * returns a token to a caller that only asked whether a job may run: `auth` is the decrypted
  * payload and is only ever handed to jobEnv().
  *
- * Refusals are terminal by design (Duarte, PR-1 constraints): no job is enqueued, rather than a
- * job that runs on somebody else's subscription behind a dismissible warning.
+ * Refusals are terminal by design: no job is enqueued for a profile an admin has not enabled.
  */
 export function credentialFor(uid) {
   const cfg = load();
@@ -268,7 +293,7 @@ export function credentialFor(uid) {
 
   // instance mode
   const bound = boundUidFor(cfg);
-  if (bound && bound !== uid) {
+  if (bound && bound !== uid && cfg.userAccess?.[uid] !== true) {
     return { ok: false, reason: 'shared-account', message: SHARED_ACCOUNT_REFUSAL, mode: 'instance' };
   }
   const rec = authFor(cfg);
@@ -345,10 +370,10 @@ export function isConnected() {
 }
 
 /** What /api/config tells every client. Absent ⇒ no Coach UI exists anywhere (FR-55/56). */
-export function publicConfig() {
+export function publicConfig(uid) {
   if (!isEnabled() || !isConnected()) return null;
   const cfg = load();
-  return { enabled: true, provider: cfg.provider, providerLabel: providerMeta(cfg).label, authMode: cfg.authMode, community: !!cfg.community };
+  return { enabled: true, allowed: userCoachEnabled(uid, cfg), provider: cfg.provider, providerLabel: providerMeta(cfg).label, authMode: cfg.authMode, community: !!cfg.community };
 }
 
 /**

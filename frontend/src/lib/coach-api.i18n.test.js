@@ -110,15 +110,14 @@ describe('every refusal the server sends has a line here', () => {
     expect(JOB_ERRORS[cls]).toBe('The Coach isn’t set up on this instance.')
   })
 
-  // A refusal at enqueue sends { error: USER_ERROR[code], code }. 'shared' is worded verbatim on
-  // purpose (it names who can resolve it), so it keeps the server's words; every other class
-  // gets the app's line.
-  it('every class the enqueue refusal words has a line, except the verbatim shared-account one', () => {
+  // A refusal at enqueue sends { error: USER_ERROR[code], code }; every class gets the app's
+  // translated line so users see actionable guidance in their selected language.
+  it('every class the enqueue refusal words has a translated line', () => {
     const block = routes.match(/const USER_ERROR = \{([\s\S]*?)\n\};/)?.[1]
     expect(block).toBeTruthy()
     const classes = [...block.matchAll(/^\s*(\w+):/gm)].map(m => m[1])
     expect(classes).toEqual(expect.arrayContaining(['off', 'busy', 'cap', 'consent', 'shared', 'unprivileged']))
-    for (const cls of classes.filter(c => c !== 'shared')) expect(Object.keys(JOB_ERRORS), cls).toContain(cls)
+    for (const cls of classes) expect(Object.keys(JOB_ERRORS), cls).toContain(cls)
   })
 
   it('the unprivileged line says what the server says, in the app\'s voice', () => {

@@ -1389,6 +1389,7 @@ function removeAccount(u) {
   // The training history and any Coach credential of theirs, both outside db.json.
   try { fs.unlinkSync(stateFile(u.id)); } catch { /* already gone */ }
   try { coachConfig.clearProfileAuth(u.id); } catch { /* nothing stored */ }
+  try { coachConfig.clearUserCoachAccess(u.id); } catch { /* nothing stored */ }
   // Their photos and videos — the one place a profile's folder under uploads/ is removed.
   try { MEDIA.removeUser(u.id); } catch (e) { console.error('media: could not remove uploads of', u.id, e.message); }
   saveDb();
@@ -2131,6 +2132,7 @@ const routes = {
   // single flag every piece of Coach UI hangs off, so an unconfigured instance is byte-for-byte
   // the app it was before the feature existed.
   'GET /api/config': async (req, res) => {
+    const sessionUser = readSession(req);
     // The Coach block names the provider this instance is wired to — the same fact
     // /api/coach/disclosure refuses to hand out without a session, and for the same reason: on an
     // invite-only instance, which model this box talks to is nobody's business who has not been
@@ -2154,7 +2156,7 @@ const routes = {
       // Public like the two flags above: the caps are not a secret, and the absence of the
       // block is how the app knows this server does not take photos and videos at all.
       ...(MEDIA_ON ? { media: mediaConfig(MEDIA_LIMITS) } : {}),
-      ...(readSession(req) ? { coach: coachConfig.publicConfig() } : {})
+      ...(sessionUser ? { coach: coachConfig.publicConfig(sessionUser.id) } : {})
     });
   },
 
@@ -2730,6 +2732,7 @@ const routes = {
         signInCount: Number.isSafeInteger(u.signInCount) ? u.signInCount : null,
         signInTrackingSince: u.signInTrackingSince || null,
         disabled: !!u.disabled, admin: isAdmin(u), owner: isOwner(u), invitedBy: u.invitedBy || null,
+        coachEnabled: coachConfig.userCoachEnabled(u.id),
         workouts: workouts.length,
         lastWorkout: last ? last.d : null,
         lastSync: lastSyncOf(u, S),
@@ -2753,6 +2756,7 @@ const routes = {
     json(res, 200, {
       user: {
         id: u.id, name: u.name, created: u.created || null, disabled: !!u.disabled, admin: isAdmin(u), owner: isOwner(u), invitedBy: u.invitedBy || null,
+        coachEnabled: coachConfig.userCoachEnabled(u.id),
         // Only on an instance with password sign-in: whether they have one, and until when an
         // unused reset code is good.
         ...(PASSWORD_LOGIN ? { password: hasPassword(u), email: u.email || null, resetUntil: u.pwReset?.exp > Date.now() ? u.pwReset.exp : null } : {}),
@@ -2801,6 +2805,17 @@ const routes = {
     saveDb();
     audit(req, u.disabled ? 'admin.user.disable' : 'admin.user.enable', { user: admin, target: u });
     json(res, 200, { ok: true, id: u.id, disabled: u.disabled });
+  },
+
+  'POST /api/admin/user/coach': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const u = db.users.find(x => x.id === body.id);
+    if (!u) return json(res, 404, { error: 'no such user' });
+    const enabled = !!body.enabled;
+    coachConfig.setUserCoachEnabled(u.id, enabled);
+    audit(req, enabled ? 'admin.user.coach.enable' : 'admin.user.coach.disable', { user: admin, target: u });
+    json(res, 200, { ok: true, id: u.id, coachEnabled: enabled });
   },
 
   // Disable locks an account out; this removes it. The one destructive action in the app, so the

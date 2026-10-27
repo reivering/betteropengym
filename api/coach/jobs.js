@@ -197,6 +197,7 @@ export function clampMessage(text) {
  */
 export function enqueue(uid, opts) {
   if (!cfgStore.isEnabled() || !cfgStore.isConnected()) throw new CoachError('off', 'the Coach is not set up on this instance');
+  if (!cfgStore.userCoachEnabled(uid)) throw new CoachError('user-disabled', 'the Coach has not been enabled for this profile');
   if (inflight.has(uid)) throw new CoachError('busy', 'the Coach is already thinking about your training');
 
   const S = readState(uid);
@@ -204,10 +205,8 @@ export function enqueue(uid, opts) {
   // is not a gate (FR-08/13).
   if (!S?.coach?.consent?.agreedAt) throw new CoachError('consent', 'the Coach needs your go-ahead first');
 
-  // Whose account pays. In instance mode the credential binds to the first profile that spends
-  // it and every other profile is refused outright — not warned. A warning would move the
-  // decision onto whoever clicks past it, and the decision is about spending somebody else's
-  // personal subscription.
+  // Whose account pays. If an instance credential is bound to another profile, credentialFor
+  // only permits this one after the admin explicitly enables Coach access for it.
   const cred = cfgStore.credentialFor(uid);
   if (!cred.ok) {
     if (cred.reason === 'shared-account') throw new CoachError('shared', cred.message);

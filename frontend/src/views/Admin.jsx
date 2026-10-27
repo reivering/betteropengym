@@ -8,7 +8,7 @@ import { auditCat, auditLine, fmtWhen } from '../lib/audit.js'
 import { workoutVolume, setsDone } from '../lib/history.js'
 import { confirmSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
-import { Button } from '../components/ui.jsx'
+import { Button, Switch } from '../components/ui.jsx'
 import AdminCoach from './AdminCoach.jsx'
 import '../admin.css'
 
@@ -61,6 +61,7 @@ function RecoveryCodeSheet({ name, code, expires, close }) {
 function UserDetail({ id, viewerOwner, onChanged, close }) {
   const me = useStore(s => s.user)
   const [d, setD] = useState(null)
+  const [coachBusy, setCoachBusy] = useState(false)
   const toast = useUI(s => s.toast)
   const openSheet = useUI(s => s.openSheet)
   useEffect(() => { api('/api/admin/user?id=' + encodeURIComponent(id)).then(setD).catch(e => toast(e.message)) }, [id])
@@ -90,6 +91,16 @@ function UserDetail({ id, viewerOwner, onChanged, close }) {
     api('/api/admin/user/disable', { method: 'POST', body: JSON.stringify({ id: u.id, disabled }) })
       .then(() => { toast(disabled ? 'User disabled' : 'User enabled'); onChanged(); close() })
       .catch(e => toast(e.message))
+  }
+  const setCoachEnabled = async enabled => {
+    setCoachBusy(true)
+    try {
+      const r = await api('/api/admin/user/coach', { method: 'POST', body: JSON.stringify({ id: u.id, enabled }) })
+      setD(current => current ? { ...current, user: { ...current.user, coachEnabled: r.coachEnabled } } : current)
+      toast(enabled ? 'AI Coach enabled for ' + u.name : 'AI Coach disabled for ' + u.name)
+      onChanged()
+    } catch (e) { toast(e.message) }
+    setCoachBusy(false)
   }
   // One owner, any number of admins: only the owner appoints, removes or hands the role on.
   const setRole = admin => api('/api/admin/user/role', { method: 'POST', body: JSON.stringify({ id: u.id, admin }) })
@@ -132,6 +143,7 @@ function UserDetail({ id, viewerOwner, onChanged, close }) {
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '8px 0 12px' }}>
       {u.owner ? <span className="adm-pill acc">owner</span> : u.admin && <span className="adm-pill acc">admin</span>}
       {u.disabled && <span className="adm-pill bad">disabled</span>}
+      {u.coachEnabled && <span className="adm-pill acc">AI Coach enabled</span>}
       {u.invitedBy && <span className="adm-pill">invite {u.invitedBy}</span>}
       {u.password && <span className="adm-pill">password</span>}
       {/* The sign-in e-mail (password instances only): shown to admins and nobody else. */}
@@ -146,6 +158,13 @@ function UserDetail({ id, viewerOwner, onChanged, close }) {
       <div className="tile"><div className="l">Measurements</div><div className="v" style={{ fontSize: '1.1rem' }}>{(d.measurements || []).length}</div></div>
       <div className="tile"><div className="l">Routines</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.routines.length}</div></div>
       <div className="tile"><div className="l">Last sync</div><div className="v" style={{ fontSize: '.95rem' }}>{rel(d.lastSync)}</div></div>
+    </div>
+    <div className="row between" style={{ marginTop: 14, gap: 12, alignItems: 'flex-start' }}>
+      <div style={{ minWidth: 0 }}>
+        <div className="small" style={{ fontWeight: 600 }}>AI Coach access</div>
+        <div className="adm-hint" style={{ margin: '3px 0 0' }}>Allow this profile to use the instance’s configured AI Coach. They still approve their own training data before it is sent.</div>
+      </div>
+      <Switch checked={!!u.coachEnabled} disabled={coachBusy || u.disabled} onChange={setCoachEnabled} aria-label={'AI Coach access for ' + u.name} />
     </div>
     {viewerOwner && !u.owner && !u.disabled && <>
       <button className="btn" style={{ margin: '12px 0 4px' }}
@@ -401,7 +420,7 @@ export default function Admin() {
           const createdAt = Date.parse(u.created || '') || 0
           const isNew = createdAt > 0 && Date.now() - createdAt < 7 * 86400000
           return <div key={u.id} className="item" onClick={() => openUser(u.id)} style={u.disabled ? { opacity: .55 } : null}>
-            <div className="grow"><div className="tt">{u.live && <Icon name="dot" style={{ fontSize: 9, color: 'var(--green)', display: 'inline-block', marginInlineEnd: 5 }} />}{u.name} {isNew && <span className="adm-pill acc" style={{ marginInlineStart: 4 }}>new</span>} {u.admin && <span className="adm-pill acc" style={{ marginInlineStart: 4 }}>{u.owner ? 'owner' : 'admin'}</span>}{u.disabled && <span className="adm-pill bad" style={{ marginInlineStart: 4 }}>disabled</span>}</div>
+            <div className="grow"><div className="tt">{u.live && <Icon name="dot" style={{ fontSize: 9, color: 'var(--green)', display: 'inline-block', marginInlineEnd: 5 }} />}{u.name} {isNew && <span className="adm-pill acc" style={{ marginInlineStart: 4 }}>new</span>} {u.admin && <span className="adm-pill acc" style={{ marginInlineStart: 4 }}>{u.owner ? 'owner' : 'admin'}</span>}{u.coachEnabled && <span className="adm-pill acc" style={{ marginInlineStart: 4 }}>Coach</span>}{u.disabled && <span className="adm-pill bad" style={{ marginInlineStart: 4 }}>disabled</span>}</div>
               <div className="ss">Joined {u.created ? fmtDate(u.created.slice(0, 10), false, true) : 'date unknown'} · last sign-in {u.lastSignInAt ? rel(u.lastSignInAt) : 'not recorded'}</div>
               <div className="ss">{u.signInCount != null ? `${u.signInCount} sign-ins since ${u.signInTrackingSince ? fmtDate(u.signInTrackingSince.slice(0, 10), false, true) : 'tracking began'}` : 'Sign-in count starts with their next sign-in'}</div>
               <div className="ss">{u.live ? 'training now · ' + u.live.name : u.workouts + ' workouts' + (u.lastWorkout ? ' · last ' + fmtDate(u.lastWorkout) : '') + ' · last sync ' + rel(u.lastSync)}</div>

@@ -243,6 +243,8 @@ export const JOB_ERRORS = {
   get busy() { return t('The Coach is already thinking about your training.') },
   get cap() { return t('The Coach is taking a rest day. Try again tomorrow.') },
   get consent() { return t('The Coach needs your go-ahead first.') },
+  get shared() { return t('This Coach login is linked to another profile. Ask an admin to enable Coach access for your profile in Users.') },
+  get 'user-disabled'() { return t('The AI Coach has not been enabled for your profile. Ask an admin to enable it in Users.') },
   get timeout() { return t('The Coach took too long and gave up.') },
   get auth() { return t('The Coach couldn’t sign in to its provider. The instance owner needs to check its setup.') },
   get missing() { return t('The Coach isn’t installed properly on this instance.') },

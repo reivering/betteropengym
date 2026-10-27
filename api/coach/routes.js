@@ -16,6 +16,7 @@ import { validateBaseUrl, validateHeaders, baseUrlFor } from './core/providers.j
 // them — it goes to the admin card, which is where someone can act on it (FR-47).
 const USER_ERROR = {
   off: 'the Coach is not set up on this instance',
+  'user-disabled': 'the AI Coach has not been enabled for your profile. Ask an admin to enable it in Users.',
   busy: 'the Coach is already thinking about your training',
   cap: 'the Coach is taking a rest day, try again tomorrow',
   consent: 'the Coach needs your go-ahead first',
@@ -25,7 +26,7 @@ const USER_ERROR = {
   unprivileged: 'the Coach is switched off on this instance for safety reasons'
 };
 const hostOf = url => { try { return url ? new URL(url).host : null; } catch { return null; } };
-const HTTP_FOR = { off: 503, busy: 409, cap: 429, consent: 403, shared: 409, unprivileged: 503 };
+const HTTP_FOR = { off: 503, 'user-disabled': 403, busy: 409, cap: 429, consent: 403, shared: 409, unprivileged: 503 };
 
 export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
   /** Every user route starts the same way: signed in, feature on, feature reachable. The class
@@ -35,6 +36,7 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
     const user = readSession(req);
     if (!user) { json(res, 401, { error: 'not signed in' }); return null; }
     if (!cfgStore.isEnabled() || !cfgStore.isConnected()) { json(res, 503, { error: USER_ERROR.off, code: 'off' }); return null; }
+    if (!cfgStore.userCoachEnabled(user.id)) { json(res, 403, { error: USER_ERROR['user-disabled'], code: 'user-disabled' }); return null; }
     return user;
   };
   const failEnqueue = (res, e) => {
@@ -50,7 +52,9 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
     // that reads it sits behind a session anyway, and on an invite-only instance which provider
     // this box is wired to is nobody's business who has not been let in.
     'GET /api/coach/disclosure': async (req, res) => {
-      if (!readSession(req)) return json(res, 401, { error: 'not signed in' });
+      const user = readSession(req);
+      if (!user) return json(res, 401, { error: 'not signed in' });
+      if (!cfgStore.userCoachEnabled(user.id)) return json(res, 403, { error: USER_ERROR['user-disabled'], code: 'user-disabled' });
       const cfg = cfgStore.load();
       json(res, 200, {
         provider: cfg.provider,
@@ -400,6 +404,7 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
     'GET /api/coach/account': async (req, res) => {
       const user = readSession(req);
       if (!user) return json(res, 401, { error: 'not signed in' });
+      if (!cfgStore.userCoachEnabled(user.id)) return json(res, 403, { error: USER_ERROR['user-disabled'], code: 'user-disabled' });
       json(res, 200, cfgStore.accountFor(user.id));
     }
   };
